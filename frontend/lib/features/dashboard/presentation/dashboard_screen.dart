@@ -130,6 +130,8 @@ class DashboardScreen extends ConsumerWidget {
                         positions: portfolio?.positions ?? const [],
                         onEdit: (position) =>
                             _showRiskEditor(context, ref, position),
+                        onClose: (position) =>
+                            _confirmClose(context, ref, position),
                       ),
                     ),
                   ),
@@ -337,6 +339,39 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _confirmClose(
+    BuildContext context,
+    WidgetRef ref,
+    Position position,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Exit ${position.symbol}?'),
+        content: Text(
+          'The ${position.side} position will close at the current live '
+          '${position.side == 'BUY' ? 'bid' : 'ask'} price. Current P&L: '
+          '${_money(position.netPnl)}.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Exit trade'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref
+          .read(tradingControllerProvider.notifier)
+          .closeTrade(position.orderId);
+    }
+  }
 }
 
 class _SearchResults extends StatelessWidget {
@@ -478,9 +513,14 @@ class _QuoteTile extends StatelessWidget {
 }
 
 class _Positions extends StatelessWidget {
-  const _Positions({required this.positions, required this.onEdit});
+  const _Positions({
+    required this.positions,
+    required this.onEdit,
+    required this.onClose,
+  });
   final List<Position> positions;
   final ValueChanged<Position> onEdit;
+  final ValueChanged<Position> onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -522,9 +562,18 @@ class _Positions extends StatelessWidget {
                     DataCell(Text(_optionalMoney(position.stopLoss))),
                     DataCell(Text(_money(position.netPnl))),
                     DataCell(
-                      TextButton(
-                        onPressed: () => onEdit(position),
-                        child: const Text('Edit target / SL'),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          TextButton(
+                            onPressed: () => onEdit(position),
+                            child: const Text('Edit target / SL'),
+                          ),
+                          FilledButton.tonal(
+                            onPressed: () => onClose(position),
+                            child: const Text('Exit / Close'),
+                          ),
+                        ],
                       ),
                     ),
                   ],

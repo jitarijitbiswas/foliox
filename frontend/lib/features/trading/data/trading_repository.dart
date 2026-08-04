@@ -63,4 +63,7 @@ class TradingRepository {
     '/trading/orders/$orderId',
     data: {'target_price': targetPrice, 'stop_loss': stopLoss},
   );
+
+  Future<void> closeTrade(String orderId) =>
+      _dio.post<void>('/trading/orders/$orderId/close');
 }

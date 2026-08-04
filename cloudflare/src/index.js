@@ -42,6 +42,13 @@ export default {
         const order = await placeOrder(env.DB, account.id, body, chain);
         return json(order, 201, headers);
       }
+      if (request.method === 'POST' && url.pathname.endsWith('/close') &&
+          url.pathname.startsWith('/api/v1/trading/orders/')) {
+        const orderId = url.pathname
+          .slice('/api/v1/trading/orders/'.length, -'/close'.length);
+        const result = await closeTrade(env.DB, account.id, orderId);
+        return json(result, 200, headers);
+      }
       if (request.method === 'PATCH' && url.pathname.startsWith('/api/v1/trading/orders/')) {
         const orderId = url.pathname.slice('/api/v1/trading/orders/'.length);
         const result = await updateRisk(env.DB, account.id, orderId, await request.json());
@@ -110,10 +117,18 @@ async function nseJson(path, referer = `${NSE_BASE}/option-chain?symbol=NIFTY`) 
 async function searchMarket(rawQuery) {
   const query = rawQuery.trim();
   if (query.length < 2) return [];
-  const [equities, chain] = await Promise.all([
-    nseJson(`/api/smart-search/equity?q=${encodeURIComponent(query)}`, `${NSE_BASE}/`),
-    loadNiftyChain(),
-  ]);
+  const chain = await loadNiftyChain();
+  let equities = [];
+  if (/[A-Za-z]/.test(query)) {
+    try {
+      equities = await nseJson(
+        `/api/smart-search/equity?q=${encodeURIComponent(query)}`,
+        `${NSE_BASE}/`,
+      );
+    } catch (error) {
+      console.error(error);
+    }
+  }
   const normalized = query.toUpperCase().replace(/\s+/g, '');
   const equityResults = equities
     .filter((item) => item.series === 'EQ')
@@ -131,10 +146,15 @@ async function searchMarket(rawQuery) {
       ask: Number(item.lastPrice || 0),
       change_percent: Number(item.pChange || 0),
     }));
-  const optionResults = chain.quotes.filter((item) =>
-    item.symbol.toUpperCase().includes(normalized) ||
-    item.name.toUpperCase().replace(/\s+/g, '').includes(normalized),
-  ).slice(0, 20);
+  const optionResults = chain.quotes
+    .filter((item) =>
+      item.symbol.toUpperCase().includes(normalized) ||
+      item.name.toUpperCase().replace(/\s+/g, '').includes(normalized),
+    )
+    .sort((left, right) =>
+      Math.abs(left.strike - chain.underlying) - Math.abs(right.strike - chain.underlying),
+    )
+    .slice(0, 40);
   return [...equityResults, ...optionResults];
 }
 
@@ -205,7 +225,6 @@ async function loadNiftyChain() {
   if (!records?.data?.length) throw new Error('NSE returned an empty option chain');
   const quotes = [];
   for (const row of records.data) {
-    if (Math.abs(Number(row.strikePrice) - Number(records.underlyingValue)) > 1750) continue;
     if (Number(row.strikePrice) % 50 !== 0) continue;
     for (const optionType of ['CE', 'PE']) {
       const item = row[optionType];
@@ -300,6 +319,30 @@ async function updateRisk(db, accountId, orderId, body) {
   await db.prepare('UPDATE orders SET target_price=?, stop_loss=?, updated_at=? WHERE id=? AND account_id=?')
     .bind(target, stop, new Date().toISOString(), orderId, accountId).run();
   return { ok: true, target_price: target, stop_loss: stop };
+}
+
+async function closeTrade(db, accountId, orderId) {
+  const order = await db.prepare(
+    "SELECT * FROM orders WHERE id=? AND account_id=? AND status='OPEN'",
+  ).bind(orderId, accountId).first();
+  if (!order) throw new Error('Open trade not found');
+  const chain = await loadNiftyChain();
+  const option = chain.quotes.find((item) => item.symbol === order.symbol);
+  const quote = option || await loadEquityQuote(order.symbol);
+  const exitPrice = order.side === 'BUY' ? quote.bid : quote.ask;
+  const direction = order.side === 'BUY' ? 1 : -1;
+  const pnl = (exitPrice - order.entry_price) * order.quantity * direction;
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare(`UPDATE orders SET status='CLOSED', exit_price=?, exit_reason='MANUAL',
+      pnl=?, updated_at=? WHERE id=? AND account_id=? AND status='OPEN'`)
+      .bind(exitPrice, pnl, now, orderId, accountId),
+    db.prepare(`INSERT INTO trade_events
+      (id, order_id, account_id, event_type, price, quantity, reason, created_at)
+      VALUES (?, ?, ?, 'EXIT', ?, ?, 'MANUAL', ?)`)
+      .bind(crypto.randomUUID(), orderId, accountId, exitPrice, order.quantity, now),
+  ]);
+  return { ok: true, exit_price: exitPrice, pnl, reason: 'MANUAL' };
 }
 
 async function processExits(db, accountId, quotes) {

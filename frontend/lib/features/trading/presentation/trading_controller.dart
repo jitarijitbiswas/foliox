@@ -153,6 +153,22 @@ class TradingController extends StateNotifier<TradingState> {
     }
   }
 
+  Future<bool> closeTrade(String orderId) async {
+    state = state.copyWith(isSubmitting: true, clearFeedback: true);
+    try {
+      await _repository.closeTrade(orderId);
+      await refresh(silent: true);
+      state = state.copyWith(
+        isSubmitting: false,
+        message: 'Trade closed at live market price',
+      );
+      return true;
+    } catch (error) {
+      state = state.copyWith(isSubmitting: false, error: _messageFor(error));
+      return false;
+    }
+  }
+
   Future<bool> placeOrder(
     Quote quote,
     OrderSide side,
