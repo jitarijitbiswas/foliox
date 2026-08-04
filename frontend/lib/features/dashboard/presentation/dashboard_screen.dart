@@ -132,6 +132,7 @@ class DashboardScreen extends ConsumerWidget {
                             _showRiskEditor(context, ref, position),
                         onClose: (position) =>
                             _confirmClose(context, ref, position),
+                        onRefresh: (_) => controller.refresh(silent: true),
                       ),
                     ),
                   ),
@@ -517,10 +518,12 @@ class _Positions extends StatelessWidget {
     required this.positions,
     required this.onEdit,
     required this.onClose,
+    required this.onRefresh,
   });
   final List<Position> positions;
   final ValueChanged<Position> onEdit;
   final ValueChanged<Position> onClose;
+  final ValueChanged<Position> onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -547,6 +550,7 @@ class _Positions extends StatelessWidget {
             DataColumn(label: Text('Target')),
             DataColumn(label: Text('Stop-loss')),
             DataColumn(label: Text('P&L')),
+            DataColumn(label: Text('Updated')),
             DataColumn(label: Text('Actions')),
           ],
           rows: positions
@@ -562,6 +566,11 @@ class _Positions extends StatelessWidget {
                     DataCell(Text(_optionalMoney(position.stopLoss))),
                     DataCell(Text(_money(position.netPnl))),
                     DataCell(
+                      Text(
+                        position.timestamp.isEmpty ? '—' : position.timestamp,
+                      ),
+                    ),
+                    DataCell(
                       Wrap(
                         spacing: 8,
                         children: [
@@ -572,6 +581,11 @@ class _Positions extends StatelessWidget {
                           FilledButton.tonal(
                             onPressed: () => onClose(position),
                             child: const Text('Exit / Close'),
+                          ),
+                          IconButton(
+                            tooltip: 'Refresh this trade LTP and P&L',
+                            onPressed: () => onRefresh(position),
+                            icon: const Icon(Icons.refresh),
                           ),
                         ],
                       ),

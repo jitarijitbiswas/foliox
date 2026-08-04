@@ -258,6 +258,7 @@ async function loadNiftyChain() {
         change_percent: Number(item.pChange || item.PChange || 0),
         open_interest: Number(item.openInterest || 0),
         volume: Number(item.totalTradedVolume || 0),
+        timestamp: records.timestamp,
       });
     }
   }
@@ -426,6 +427,7 @@ async function snapshot(db, accountId, chain, accountQuotes) {
       realized_pnl: 0,
       unrealized_pnl: pnl,
       net_pnl: pnl,
+      timestamp: quote?.timestamp || chain.timestamp,
     });
   }
   return {

@@ -83,9 +83,13 @@ class TradingController extends StateNotifier<TradingState> {
   Timer? _timer;
   Timer? _searchDebounce;
   bool _refreshing = false;
+  bool _refreshQueued = false;
 
   Future<void> refresh({bool silent = false}) async {
-    if (_refreshing) return;
+    if (_refreshing) {
+      _refreshQueued = true;
+      return;
+    }
     _refreshing = true;
     if (!silent) state = state.copyWith(isLoading: true, clearFeedback: true);
     try {
@@ -95,6 +99,10 @@ class TradingController extends StateNotifier<TradingState> {
       state = state.copyWith(isLoading: false, error: _messageFor(error));
     } finally {
       _refreshing = false;
+      if (_refreshQueued) {
+        _refreshQueued = false;
+        unawaited(refresh(silent: true));
+      }
     }
   }
 
