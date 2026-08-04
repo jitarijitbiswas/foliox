@@ -97,13 +97,15 @@ function json(value, status, headers = {}) {
 }
 
 async function nseJson(path, referer = `${NSE_BASE}/option-chain?symbol=NIFTY`) {
+  const liveUrl = new URL(path, NSE_BASE);
+  liveUrl.searchParams.set('_ts', Date.now().toString());
   const common = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',
     accept: 'application/json,text/plain,*/*',
     'accept-language': 'en-US,en;q=0.9',
     referer,
   };
-  let response = await fetch(`${NSE_BASE}${path}`, {
+  let response = await fetch(liveUrl, {
     headers: common,
     cache: 'no-store',
   });
@@ -115,7 +117,8 @@ async function nseJson(path, referer = `${NSE_BASE}/option-chain?symbol=NIFTY`) 
     cache: 'no-store',
   });
   const cookie = landing.headers.get('set-cookie')?.split(',').map((item) => item.split(';')[0]).join('; ');
-  response = await fetch(`${NSE_BASE}${path}`, {
+  liveUrl.searchParams.set('_ts', Date.now().toString());
+  response = await fetch(liveUrl, {
     headers: { ...common, ...(cookie ? { cookie } : {}) },
     cache: 'no-store',
   });

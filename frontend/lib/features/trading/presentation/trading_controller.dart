@@ -73,7 +73,7 @@ class TradingController extends StateNotifier<TradingState> {
     if (autoStart) {
       refresh();
       _timer = Timer.periodic(
-        const Duration(seconds: 1),
+        const Duration(seconds: 2),
         (_) => refresh(silent: true),
       );
     }
