@@ -91,13 +91,21 @@ class TradingController extends StateNotifier<TradingState> {
 
   void search(String value) => state = state.copyWith(query: value);
 
-  Future<bool> placeOrder(Quote quote, OrderSide side, int lots) async {
+  Future<bool> placeOrder(
+    Quote quote,
+    OrderSide side,
+    int lots, {
+    double? targetPrice,
+    double? stopLoss,
+  }) async {
     state = state.copyWith(isSubmitting: true, clearFeedback: true);
     try {
       await _repository.placeOrder(
         symbol: quote.symbol,
         side: side,
         quantity: lots * quote.lotSize,
+        targetPrice: targetPrice,
+        stopLoss: stopLoss,
       );
       final snapshot = await _repository.snapshot();
       state = state.copyWith(
@@ -125,7 +133,7 @@ class TradingController extends StateNotifier<TradingState> {
       if (data is Map<String, dynamic> && data['detail'] != null) {
         return data['detail'].toString();
       }
-      return 'Cannot reach the trading API. Start FastAPI on port 8000.';
+      return 'Cannot reach live NSE trading service. Please try again.';
     }
     return error.toString();
   }

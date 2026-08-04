@@ -29,8 +29,8 @@ class DashboardScreen extends ConsumerWidget {
         title: const Text('PaperTrade Demo'),
         actions: [
           const Chip(
-            avatar: Icon(Icons.science_outlined, size: 16),
-            label: Text('SIMULATED DATA'),
+            avatar: Icon(Icons.wifi_tethering, size: 16),
+            label: Text('NSE LIVE'),
           ),
           IconButton(
             tooltip: 'Reset demo account',
@@ -74,7 +74,7 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '11 Aug 2026 expiry · 24,500–25,500 strikes · NSE lot size 65',
+                            '${state.snapshot?.expiry ?? 'Loading expiry'} · NIFTY ${_money(state.snapshot?.underlying ?? 0)} · 50-point strikes · Lot 65',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -115,6 +115,23 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    sliver: SliverToBoxAdapter(
+                      child: Text(
+                        'Trade history',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    sliver: SliverToBoxAdapter(
+                      child: _TradeHistory(
+                        orders: state.snapshot?.orders ?? const [],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -128,6 +145,8 @@ class DashboardScreen extends ConsumerWidget {
     OrderSide side,
   ) async {
     var lots = 1;
+    var target = '';
+    var stopLoss = '';
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -171,6 +190,28 @@ class DashboardScreen extends ConsumerWidget {
                   Text(
                     'Estimated value: ${_money(price * lots * quote.lotSize)}',
                   ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Target price (optional)',
+                      prefixText: '₹ ',
+                    ),
+                    onChanged: (value) => target = value,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Stop-loss price (optional)',
+                      prefixText: '₹ ',
+                    ),
+                    onChanged: (value) => stopLoss = value,
+                  ),
                 ],
               ),
             ),
@@ -188,7 +229,13 @@ class DashboardScreen extends ConsumerWidget {
                 onPressed: () async {
                   final succeeded = await ref
                       .read(tradingControllerProvider.notifier)
-                      .placeOrder(quote, side, lots);
+                      .placeOrder(
+                        quote,
+                        side,
+                        lots,
+                        targetPrice: double.tryParse(target),
+                        stopLoss: double.tryParse(stopLoss),
+                      );
                   if (succeeded && dialogContext.mounted) {
                     Navigator.pop(dialogContext);
                   }
@@ -333,9 +380,12 @@ class _Positions extends StatelessWidget {
         child: DataTable(
           columns: const [
             DataColumn(label: Text('Symbol')),
+            DataColumn(label: Text('Side')),
             DataColumn(label: Text('Qty')),
             DataColumn(label: Text('Average')),
             DataColumn(label: Text('LTP')),
+            DataColumn(label: Text('Target')),
+            DataColumn(label: Text('Stop-loss')),
             DataColumn(label: Text('P&L')),
           ],
           rows: positions
@@ -343,9 +393,12 @@ class _Positions extends StatelessWidget {
                 (position) => DataRow(
                   cells: [
                     DataCell(Text(position.symbol)),
+                    DataCell(Text(position.side)),
                     DataCell(Text('${position.quantity}')),
                     DataCell(Text(_money(position.averagePrice))),
                     DataCell(Text(_money(position.ltp))),
+                    DataCell(Text(_optionalMoney(position.targetPrice))),
+                    DataCell(Text(_optionalMoney(position.stopLoss))),
                     DataCell(Text(_money(position.netPnl))),
                   ],
                 ),
@@ -357,4 +410,63 @@ class _Positions extends StatelessWidget {
   }
 }
 
+class _TradeHistory extends StatelessWidget {
+  const _TradeHistory({required this.orders});
+  final List<TradeOrder> orders;
+
+  @override
+  Widget build(BuildContext context) {
+    if (orders.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: Text('No trades recorded yet.')),
+        ),
+      );
+    }
+    return Card(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('Time')),
+            DataColumn(label: Text('Symbol')),
+            DataColumn(label: Text('Side')),
+            DataColumn(label: Text('Qty')),
+            DataColumn(label: Text('Entry')),
+            DataColumn(label: Text('Target')),
+            DataColumn(label: Text('Stop-loss')),
+            DataColumn(label: Text('Exit')),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('P&L')),
+          ],
+          rows: orders
+              .map(
+                (order) => DataRow(
+                  cells: [
+                    DataCell(
+                      Text(
+                        order.createdAt.toLocal().toString().substring(0, 16),
+                      ),
+                    ),
+                    DataCell(Text(order.symbol)),
+                    DataCell(Text(order.side)),
+                    DataCell(Text('${order.quantity}')),
+                    DataCell(Text(_money(order.entryPrice))),
+                    DataCell(Text(_optionalMoney(order.targetPrice))),
+                    DataCell(Text(_optionalMoney(order.stopLoss))),
+                    DataCell(Text(_optionalMoney(order.exitPrice))),
+                    DataCell(Text(order.exitReason ?? order.status)),
+                    DataCell(Text(_money(order.pnl))),
+                  ],
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+}
+
 String _money(num value) => '₹${value.toStringAsFixed(2)}';
+String _optionalMoney(num? value) => value == null ? '—' : _money(value);

@@ -20,6 +20,6 @@ void main() {
     );
 
     expect(find.text('PaperTrade Demo'), findsOneWidget);
-    expect(find.text('SIMULATED DATA'), findsOneWidget);
+    expect(find.text('NSE LIVE'), findsOneWidget);
   });
 }

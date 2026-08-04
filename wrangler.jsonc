@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "foliox",
+  "main": "cloudflare/src/index.js",
+  "compatibility_date": "2026-08-04",
+  "assets": {
+    "directory": "frontend/build/web",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "foliox-trading",
+      "database_id": "09fe7f86-6920-40a1-8bd4-6eac9a484117"
+    }
+  ]
+}

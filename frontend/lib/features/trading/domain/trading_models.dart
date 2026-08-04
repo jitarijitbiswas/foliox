@@ -10,6 +10,9 @@ class Quote {
     required this.bid,
     required this.ask,
     required this.changePercent,
+    this.expiry = '',
+    this.strike = 0,
+    this.optionType = '',
   });
 
   factory Quote.fromJson(Map<String, dynamic> json) => Quote(
@@ -21,6 +24,9 @@ class Quote {
     bid: _number(json['bid']),
     ask: _number(json['ask']),
     changePercent: _number(json['change_percent']),
+    expiry: json['expiry']?.toString() ?? '',
+    strike: _number(json['strike'] ?? 0),
+    optionType: json['option_type']?.toString() ?? '',
   );
 
   final String symbol;
@@ -31,6 +37,9 @@ class Quote {
   final double bid;
   final double ask;
   final double changePercent;
+  final String expiry;
+  final double strike;
+  final String optionType;
 
   bool get isTradable => instrumentType != 'INDEX';
 }
@@ -44,6 +53,9 @@ class Position {
     required this.realizedPnl,
     required this.unrealizedPnl,
     required this.netPnl,
+    this.side = '',
+    this.targetPrice,
+    this.stopLoss,
   });
 
   factory Position.fromJson(Map<String, dynamic> json) => Position(
@@ -54,6 +66,9 @@ class Position {
     realizedPnl: _number(json['realized_pnl']),
     unrealizedPnl: _number(json['unrealized_pnl']),
     netPnl: _number(json['net_pnl']),
+    side: json['side']?.toString() ?? '',
+    targetPrice: _nullableNumber(json['target_price']),
+    stopLoss: _nullableNumber(json['stop_loss']),
   );
 
   final String symbol;
@@ -63,6 +78,9 @@ class Position {
   final double realizedPnl;
   final double unrealizedPnl;
   final double netPnl;
+  final String side;
+  final double? targetPrice;
+  final double? stopLoss;
 }
 
 class Portfolio {
@@ -94,8 +112,60 @@ class Portfolio {
   final List<Position> positions;
 }
 
+class TradeOrder {
+  const TradeOrder({
+    required this.id,
+    required this.symbol,
+    required this.side,
+    required this.quantity,
+    required this.entryPrice,
+    required this.status,
+    required this.pnl,
+    required this.createdAt,
+    this.exitPrice,
+    this.exitReason,
+    this.targetPrice,
+    this.stopLoss,
+  });
+
+  factory TradeOrder.fromJson(Map<String, dynamic> json) => TradeOrder(
+    id: json['id'].toString(),
+    symbol: json['symbol'].toString(),
+    side: json['side'].toString(),
+    quantity: json['quantity'] as int,
+    entryPrice: _number(json['entry_price']),
+    exitPrice: _nullableNumber(json['exit_price']),
+    targetPrice: _nullableNumber(json['target_price']),
+    stopLoss: _nullableNumber(json['stop_loss']),
+    status: json['status'].toString(),
+    exitReason: json['exit_reason']?.toString(),
+    pnl: _number(json['pnl'] ?? 0),
+    createdAt: DateTime.parse(json['created_at'].toString()),
+  );
+
+  final String id;
+  final String symbol;
+  final String side;
+  final int quantity;
+  final double entryPrice;
+  final double? exitPrice;
+  final double? targetPrice;
+  final double? stopLoss;
+  final String status;
+  final String? exitReason;
+  final double pnl;
+  final DateTime createdAt;
+}
+
 class TradingSnapshot {
-  const TradingSnapshot({required this.quotes, required this.portfolio});
+  const TradingSnapshot({
+    required this.quotes,
+    required this.portfolio,
+    this.orders = const [],
+    this.underlying = 0,
+    this.expiry = '',
+    this.timestamp = '',
+  });
 
   factory TradingSnapshot.fromJson(Map<String, dynamic> json) =>
       TradingSnapshot(
@@ -105,10 +175,22 @@ class TradingSnapshot {
         portfolio: Portfolio.fromJson(
           json['portfolio'] as Map<String, dynamic>,
         ),
+        orders: (json['orders'] as List<dynamic>? ?? const [])
+            .map((item) => TradeOrder.fromJson(item as Map<String, dynamic>))
+            .toList(),
+        underlying: _number(json['underlying'] ?? 0),
+        expiry: json['expiry']?.toString() ?? '',
+        timestamp: json['timestamp']?.toString() ?? '',
       );
 
   final List<Quote> quotes;
   final Portfolio portfolio;
+  final List<TradeOrder> orders;
+  final double underlying;
+  final String expiry;
+  final String timestamp;
 }
 
 double _number(dynamic value) => double.parse(value.toString());
+double? _nullableNumber(dynamic value) =>
+    value == null ? null : double.parse(value.toString());
