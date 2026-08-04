@@ -516,17 +516,96 @@ class _Metrics extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentPnl = portfolio?.unrealizedPnl ?? 0;
+    final totalPnl = portfolio?.totalPnl ?? 0;
+    if (MediaQuery.sizeOf(context).width < 700) {
+      return Card(
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Row(
+                children: [
+                  const Icon(Icons.account_balance_wallet_outlined, size: 20),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Portfolio',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${portfolio?.positions.length ?? 0} open',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Account equity',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _money(portfolio?.equity ?? 0),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _PnlSummary(
+                          label: 'Current P&L',
+                          value: currentPnl,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _PnlSummary(label: 'Total P&L', value: totalPnl),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Available cash',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _money(portfolio?.cashBalance ?? 0),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final metrics = [
       ('Virtual cash', _money(portfolio?.cashBalance ?? 0)),
       ('Account equity', _money(portfolio?.equity ?? 0)),
-      ('Total P&L', _money(portfolio?.totalPnl ?? 0)),
+      ('Current P&L', _money(currentPnl)),
+      ('Total P&L', _money(totalPnl)),
       ('Open positions', '${portfolio?.positions.length ?? 0}'),
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth >= 900
-            ? (constraints.maxWidth - 36) / 4
-            : (constraints.maxWidth - 12) / 2;
+        final columns = constraints.maxWidth >= 1100 ? 5 : 2;
+        final width = (constraints.maxWidth - (12 * (columns - 1))) / columns;
         return Wrap(
           spacing: 12,
           runSpacing: 12,
@@ -540,6 +619,42 @@ class _Metrics extends StatelessWidget {
               .toList(),
         );
       },
+    );
+  }
+}
+
+class _PnlSummary extends StatelessWidget {
+  const _PnlSummary({required this.label, required this.value});
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = value >= 0
+        ? Colors.tealAccent.shade400
+        : Colors.redAccent.shade100;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 4),
+          Text(
+            _money(value),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 17,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -706,7 +821,7 @@ class _Positions extends StatelessWidget {
                           ('Qty', '${position.quantity}'),
                           ('Average', _money(position.averagePrice)),
                           ('LTP', _money(position.ltp)),
-                          ('P&L', _money(position.netPnl)),
+                          ('Current P&L', _money(position.netPnl)),
                           ('Target', _optionalMoney(position.targetPrice)),
                           ('Stop-loss', _optionalMoney(position.stopLoss)),
                         ],
@@ -898,24 +1013,26 @@ class _MobileFields extends StatelessWidget {
   final List<(String, String)> fields;
 
   @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 8,
-    runSpacing: 10,
-    children: fields
-        .map(
-          (field) => SizedBox(
-            width: (MediaQuery.sizeOf(context).width - 54) / 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(field.$1, style: Theme.of(context).textTheme.bodySmall),
-                const SizedBox(height: 2),
-                Text(field.$2, maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Wrap(
+      spacing: 8,
+      runSpacing: 12,
+      children: fields
+          .map(
+            (field) => SizedBox(
+              width: (constraints.maxWidth - 8) / 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(field.$1, style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 2),
+                  Text(field.$2, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
             ),
-          ),
-        )
-        .toList(),
+          )
+          .toList(),
+    ),
   );
 }
 
