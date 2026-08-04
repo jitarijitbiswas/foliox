@@ -9,6 +9,8 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isMobile = MediaQuery.sizeOf(context).width < 700;
+    final pagePadding = isMobile ? 10.0 : 16.0;
     final state = ref.watch(tradingControllerProvider);
     final controller = ref.read(tradingControllerProvider.notifier);
     final portfolio = state.snapshot?.portfolio;
@@ -26,7 +28,7 @@ class DashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PaperTrade Demo'),
+        title: Text(isMobile ? 'PaperTrade' : 'PaperTrade Demo'),
         actions: [
           const Chip(
             avatar: Icon(Icons.wifi_tethering, size: 16),
@@ -37,7 +39,7 @@ class DashboardScreen extends ConsumerWidget {
             onPressed: state.isSubmitting ? null : controller.reset,
             icon: const Icon(Icons.restart_alt),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: isMobile ? 0 : 8),
         ],
       ),
       body: state.isLoading && state.snapshot == null
@@ -47,7 +49,7 @@ class DashboardScreen extends ConsumerWidget {
               child: CustomScrollView(
                 slivers: [
                   SliverPadding(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(pagePadding),
                     sliver: SliverToBoxAdapter(
                       child: SearchBar(
                         hintText: 'Search NIFTY, BANKNIFTY, options or stocks',
@@ -62,7 +64,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   if (state.searchResults.isNotEmpty)
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      padding: EdgeInsets.fromLTRB(
+                        pagePadding,
+                        0,
+                        pagePadding,
+                        16,
+                      ),
                       sliver: SliverToBoxAdapter(
                         child: _SearchResults(
                           quotes: state.searchResults,
@@ -71,13 +78,23 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      16,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: _Metrics(portfolio: portfolio),
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      12,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: Text(
                         'Open positions',
@@ -86,7 +103,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      24,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: _Positions(
                         positions: portfolio?.positions ?? const [],
@@ -100,7 +122,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      12,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,7 +146,7 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(horizontal: pagePadding),
                     sliver: SliverList.separated(
                       itemCount: state.visibleQuotes.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
@@ -138,7 +165,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      24,
+                      pagePadding,
+                      12,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: Text(
                         'Pending orders',
@@ -147,7 +179,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      24,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: _PendingOrders(
                         orders: state.snapshot?.pendingOrders ?? const [],
@@ -156,7 +193,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      12,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: Text(
                         'Trade history',
@@ -165,7 +207,12 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      24,
+                    ),
                     sliver: SliverToBoxAdapter(
                       child: _TradeHistory(
                         orders: state.snapshot?.orders ?? const [],
@@ -200,95 +247,100 @@ class DashboardScreen extends ConsumerWidget {
             ),
             content: SizedBox(
               width: 420,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('${quote.name} · ${orderType.name.toUpperCase()} order'),
-                  const SizedBox(height: 20),
-                  SegmentedButton<EntryOrderType>(
-                    segments: const [
-                      ButtonSegment(
-                        value: EntryOrderType.market,
-                        label: Text('Market'),
-                      ),
-                      ButtonSegment(
-                        value: EntryOrderType.limit,
-                        label: Text('Limit'),
-                      ),
-                      ButtonSegment(
-                        value: EntryOrderType.stopLoss,
-                        label: Text('Stop-loss'),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${quote.name} · ${orderType.name.toUpperCase()} order',
+                    ),
+                    const SizedBox(height: 20),
+                    SegmentedButton<EntryOrderType>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(
+                          value: EntryOrderType.market,
+                          label: Text('Market'),
+                        ),
+                        ButtonSegment(
+                          value: EntryOrderType.limit,
+                          label: Text('Limit'),
+                        ),
+                        ButtonSegment(
+                          value: EntryOrderType.stopLoss,
+                          label: Text('Stop-loss'),
+                        ),
+                      ],
+                      selected: {orderType},
+                      onSelectionChanged: (selection) =>
+                          setState(() => orderType = selection.first),
+                    ),
+                    if (orderType != EntryOrderType.market) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: orderType == EntryOrderType.limit
+                              ? 'Limit price'
+                              : 'Trigger price',
+                          prefixText: '₹ ',
+                        ),
+                        onChanged: (value) => orderPrice = value,
                       ),
                     ],
-                    selected: {orderType},
-                    onSelectionChanged: (selection) =>
-                        setState(() => orderType = selection.first),
-                  ),
-                  if (orderType != EntryOrderType.market) ...[
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: lots > 1
+                              ? () => setState(() => lots--)
+                              : null,
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                        Text(
+                          '$lots lot${lots == 1 ? '' : 's'}',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        IconButton(
+                          onPressed: () => setState(() => lots++),
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      'Quantity: ${lots * quote.lotSize} · Lot size: ${quote.lotSize}',
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Estimated fill: ${_money(price)}'),
+                    Text(
+                      'Estimated value: ${_money(price * lots * quote.lotSize)}',
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Target price (optional)',
+                        prefixText: '₹ ',
+                      ),
+                      onChanged: (value) => target = value,
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: InputDecoration(
-                        labelText: orderType == EntryOrderType.limit
-                            ? 'Limit price'
-                            : 'Trigger price',
+                      decoration: const InputDecoration(
+                        labelText: 'Stop-loss price (optional)',
                         prefixText: '₹ ',
                       ),
-                      onChanged: (value) => orderPrice = value,
+                      onChanged: (value) => stopLoss = value,
                     ),
                   ],
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: lots > 1
-                            ? () => setState(() => lots--)
-                            : null,
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
-                      Text(
-                        '$lots lot${lots == 1 ? '' : 's'}',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      IconButton(
-                        onPressed: () => setState(() => lots++),
-                        icon: const Icon(Icons.add_circle_outline),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    'Quantity: ${lots * quote.lotSize} · Lot size: ${quote.lotSize}',
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Estimated fill: ${_money(price)}'),
-                  Text(
-                    'Estimated value: ${_money(price * lots * quote.lotSize)}',
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Target price (optional)',
-                      prefixText: '₹ ',
-                    ),
-                    onChanged: (value) => target = value,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Stop-loss price (optional)',
-                      prefixText: '₹ ',
-                    ),
-                    onChanged: (value) => stopLoss = value,
-                  ),
-                ],
+                ),
               ),
             ),
             actions: [
@@ -520,36 +572,31 @@ class _QuoteTile extends StatelessWidget {
   final VoidCallback? onRemove;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final compact = constraints.maxWidth < 620;
+      final identity = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  quote.symbol,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                Text(quote.name),
-              ],
-            ),
+          Text(quote.symbol, style: Theme.of(context).textTheme.titleMedium),
+          Text(quote.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+        ],
+      );
+      final price = Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _money(quote.ltp),
+            style: Theme.of(context).textTheme.titleMedium,
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _money(quote.ltp),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              Text(
-                '${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toStringAsFixed(2)}%',
-              ),
-            ],
+          Text(
+            '${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toStringAsFixed(2)}%',
           ),
-          const SizedBox(width: 16),
+        ],
+      );
+      final actions = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           OutlinedButton(
             onPressed: onTrade == null ? null : () => onTrade!(OrderSide.buy),
             child: const Text('BUY'),
@@ -565,8 +612,35 @@ class _QuoteTile extends StatelessWidget {
             icon: const Icon(Icons.close),
           ),
         ],
-      ),
-    ),
+      );
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: compact
+              ? Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: identity),
+                        const SizedBox(width: 8),
+                        price,
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Align(alignment: Alignment.centerRight, child: actions),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: identity),
+                    price,
+                    const SizedBox(width: 16),
+                    actions,
+                  ],
+                ),
+        ),
+      );
+    },
   );
 }
 
@@ -594,6 +668,83 @@ class _Positions extends StatelessWidget {
             child: Text('No open positions. Use BUY or SELL above.'),
           ),
         ),
+      );
+    }
+    if (MediaQuery.sizeOf(context).width < 700) {
+      return Column(
+        children: positions
+            .map(
+              (position) => Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              position.symbol,
+                              style: Theme.of(context).textTheme.titleMedium,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            position.side,
+                            style: TextStyle(
+                              color: position.side == 'BUY'
+                                  ? Colors.tealAccent
+                                  : Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _MobileFields(
+                        fields: [
+                          ('Qty', '${position.quantity}'),
+                          ('Average', _money(position.averagePrice)),
+                          ('LTP', _money(position.ltp)),
+                          ('P&L', _money(position.netPnl)),
+                          ('Target', _optionalMoney(position.targetPrice)),
+                          ('Stop-loss', _optionalMoney(position.stopLoss)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'NSE ${position.timestamp.isEmpty ? '—' : position.timestamp} · Checked ${_clock(checkedAt)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => onEdit(position),
+                            icon: const Icon(Icons.edit_note),
+                            label: const Text('Edit'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => onClose(position),
+                            icon: const Icon(Icons.exit_to_app),
+                            label: const Text('Exit'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.redAccent,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Refresh LTP and P&L',
+                            onPressed: () => onRefresh(position),
+                            icon: const Icon(Icons.refresh),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+            .toList(),
       );
     }
     return Card(
@@ -678,6 +829,31 @@ class _PendingOrders extends StatelessWidget {
         ),
       );
     }
+    if (MediaQuery.sizeOf(context).width < 700) {
+      return Column(
+        children: pending
+            .map(
+              (order) => Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                  title: Text(
+                    order.symbol,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    '${order.side} · ${order.orderType.replaceAll('_', ' ')} · Qty ${order.quantity}\nPrice / trigger ${_money(order.orderPrice)}',
+                  ),
+                  trailing: TextButton(
+                    onPressed: () => onCancel(order.id),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      );
+    }
     return Card(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -717,6 +893,32 @@ class _PendingOrders extends StatelessWidget {
   }
 }
 
+class _MobileFields extends StatelessWidget {
+  const _MobileFields({required this.fields});
+  final List<(String, String)> fields;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 10,
+    children: fields
+        .map(
+          (field) => SizedBox(
+            width: (MediaQuery.sizeOf(context).width - 54) / 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(field.$1, style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 2),
+                Text(field.$2, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        )
+        .toList(),
+  );
+}
+
 class _TradeHistory extends StatelessWidget {
   const _TradeHistory({required this.orders});
   final List<TradeOrder> orders;
@@ -729,6 +931,52 @@ class _TradeHistory extends StatelessWidget {
           padding: EdgeInsets.all(32),
           child: Center(child: Text('No trades recorded yet.')),
         ),
+      );
+    }
+    if (MediaQuery.sizeOf(context).width < 700) {
+      return Column(
+        children: orders
+            .map(
+              (order) => Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              order.symbol,
+                              style: Theme.of(context).textTheme.titleMedium,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(order.exitReason ?? order.status),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _MobileFields(
+                        fields: [
+                          ('Side / Qty', '${order.side} / ${order.quantity}'),
+                          ('Entry', _money(order.entryPrice)),
+                          ('Exit', _optionalMoney(order.exitPrice)),
+                          ('P&L', _money(order.pnl)),
+                          ('Target', _optionalMoney(order.targetPrice)),
+                          ('Stop-loss', _optionalMoney(order.stopLoss)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        order.createdAt.toLocal().toString().substring(0, 16),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+            .toList(),
       );
     }
     return Card(
