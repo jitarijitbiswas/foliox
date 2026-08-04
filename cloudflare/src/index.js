@@ -433,6 +433,7 @@ async function snapshot(db, accountId, chain, accountQuotes) {
   return {
     ...chain,
     quotes: accountQuotes,
+    refreshed_at: new Date().toISOString(),
     portfolio: {
       cash_balance: cash,
       equity: INITIAL_BALANCE + realized + unrealized,

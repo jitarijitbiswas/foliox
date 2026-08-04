@@ -171,6 +171,7 @@ class TradingSnapshot {
     this.underlying = 0,
     this.expiry = '',
     this.timestamp = '',
+    this.refreshedAt,
   });
 
   factory TradingSnapshot.fromJson(Map<String, dynamic> json) =>
@@ -187,6 +188,9 @@ class TradingSnapshot {
         underlying: _number(json['underlying'] ?? 0),
         expiry: json['expiry']?.toString() ?? '',
         timestamp: json['timestamp']?.toString() ?? '',
+        refreshedAt: json['refreshed_at'] == null
+            ? null
+            : DateTime.parse(json['refreshed_at'].toString()),
       );
 
   final List<Quote> quotes;
@@ -195,6 +199,7 @@ class TradingSnapshot {
   final double underlying;
   final String expiry;
   final String timestamp;
+  final DateTime? refreshedAt;
 }
 
 double _number(dynamic value) => double.parse(value.toString());

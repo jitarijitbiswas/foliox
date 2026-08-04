@@ -88,7 +88,7 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Add NSE stocks or NIFTY option strikes · NIFTY ${_money(state.snapshot?.underlying ?? 0)} · Updated ${state.snapshot?.timestamp ?? '—'}',
+                            'NIFTY ${_money(state.snapshot?.underlying ?? 0)} · NSE ${state.snapshot?.timestamp ?? '—'} · Checked ${_clock(state.snapshot?.refreshedAt)}',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -133,6 +133,7 @@ class DashboardScreen extends ConsumerWidget {
                         onClose: (position) =>
                             _confirmClose(context, ref, position),
                         onRefresh: (_) => controller.refresh(silent: true),
+                        checkedAt: state.snapshot?.refreshedAt,
                       ),
                     ),
                   ),
@@ -519,11 +520,13 @@ class _Positions extends StatelessWidget {
     required this.onEdit,
     required this.onClose,
     required this.onRefresh,
+    required this.checkedAt,
   });
   final List<Position> positions;
   final ValueChanged<Position> onEdit;
   final ValueChanged<Position> onClose;
   final ValueChanged<Position> onRefresh;
+  final DateTime? checkedAt;
 
   @override
   Widget build(BuildContext context) {
@@ -550,7 +553,7 @@ class _Positions extends StatelessWidget {
             DataColumn(label: Text('Target')),
             DataColumn(label: Text('Stop-loss')),
             DataColumn(label: Text('P&L')),
-            DataColumn(label: Text('Updated')),
+            DataColumn(label: Text('NSE tick / checked')),
             DataColumn(label: Text('Actions')),
           ],
           rows: positions
@@ -567,20 +570,23 @@ class _Positions extends StatelessWidget {
                     DataCell(Text(_money(position.netPnl))),
                     DataCell(
                       Text(
-                        position.timestamp.isEmpty ? '—' : position.timestamp,
+                        '${position.timestamp.isEmpty ? '—' : position.timestamp}\nChecked ${_clock(checkedAt)}',
                       ),
                     ),
                     DataCell(
-                      Wrap(
-                        spacing: 8,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          TextButton(
+                          IconButton(
+                            tooltip: 'Edit target / stop-loss',
                             onPressed: () => onEdit(position),
-                            child: const Text('Edit target / SL'),
+                            icon: const Icon(Icons.edit_note),
                           ),
-                          FilledButton.tonal(
+                          IconButton(
+                            tooltip: 'Exit / Close trade',
                             onPressed: () => onClose(position),
-                            child: const Text('Exit / Close'),
+                            color: Colors.red,
+                            icon: const Icon(Icons.exit_to_app),
                           ),
                           IconButton(
                             tooltip: 'Refresh this trade LTP and P&L',
@@ -660,3 +666,9 @@ class _TradeHistory extends StatelessWidget {
 
 String _money(num value) => '₹${value.toStringAsFixed(2)}';
 String _optionalMoney(num? value) => value == null ? '—' : _money(value);
+String _clock(DateTime? value) {
+  if (value == null) return '—';
+  final local = value.toLocal();
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+}
