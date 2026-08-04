@@ -88,7 +88,7 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Add NSE stocks or NIFTY option strikes · NIFTY ${_money(state.snapshot?.underlying ?? 0)}',
+                            'Add NSE stocks or NIFTY option strikes · NIFTY ${_money(state.snapshot?.underlying ?? 0)} · Updated ${state.snapshot?.timestamp ?? '—'}',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],

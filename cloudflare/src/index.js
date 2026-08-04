@@ -1,6 +1,9 @@
 const NSE_BASE = 'https://www.nseindia.com';
 const INITIAL_BALANCE = 1_000_000;
 const LOT_SIZE = 65;
+const LIVE_CACHE_MS = 900;
+let niftyCache;
+const equityCache = new Map();
 
 export default {
   async fetch(request, env, ctx) {
@@ -100,14 +103,21 @@ async function nseJson(path, referer = `${NSE_BASE}/option-chain?symbol=NIFTY`) 
     'accept-language': 'en-US,en;q=0.9',
     referer,
   };
-  let response = await fetch(`${NSE_BASE}${path}`, { headers: common });
+  let response = await fetch(`${NSE_BASE}${path}`, {
+    headers: common,
+    cache: 'no-store',
+  });
   let text = await response.text();
   if (response.ok && text.length > 2) return JSON.parse(text);
 
-  const landing = await fetch(referer, { headers: common });
+  const landing = await fetch(referer, {
+    headers: common,
+    cache: 'no-store',
+  });
   const cookie = landing.headers.get('set-cookie')?.split(',').map((item) => item.split(';')[0]).join('; ');
   response = await fetch(`${NSE_BASE}${path}`, {
     headers: { ...common, ...(cookie ? { cookie } : {}) },
+    cache: 'no-store',
   });
   text = await response.text();
   if (!response.ok || text.length <= 2) throw new Error('NSE live data is temporarily unavailable');
@@ -159,6 +169,8 @@ async function searchMarket(rawQuery) {
 }
 
 async function loadEquityQuote(symbol) {
+  const cached = equityCache.get(symbol);
+  if (cached && cached.expiresAt > Date.now()) return cached.quote;
   const metadata = await nseJson(
     `/api/NextApi/apiClient/GetQuoteApi?functionName=getMetaData&symbol=${encodeURIComponent(symbol)}`,
     `${NSE_BASE}/`,
@@ -170,7 +182,7 @@ async function loadEquityQuote(symbol) {
   const book = item.orderBook;
   const meta = item.metaData;
   const ltp = Number(book.lastPrice || item.tradeInfo?.lastPrice || meta.closePrice);
-  return {
+  const quote = {
     symbol: meta.symbol,
     name: meta.companyName,
     instrument_type: 'EQUITY',
@@ -186,6 +198,8 @@ async function loadEquityQuote(symbol) {
     volume: Number(item.tradeInfo?.totalTradedVolume || 0),
     timestamp: item.lastUpdateTime,
   };
+  equityCache.set(symbol, { quote, expiresAt: Date.now() + LIVE_CACHE_MS });
+  return quote;
 }
 
 async function addWatchlist(db, accountId, body) {
@@ -218,6 +232,7 @@ async function loadAccountQuotes(db, accountId, chain) {
 }
 
 async function loadNiftyChain() {
+  if (niftyCache?.expiresAt > Date.now()) return niftyCache.value;
   const info = await nseJson('/api/option-chain-contract-info?symbol=NIFTY');
   const expiry = info.expiryDates.find((value) => parseNseDate(value) >= startOfToday()) || info.expiryDates[0];
   const payload = await nseJson(`/api/option-chain-v3?type=Indices&symbol=NIFTY&expiry=${encodeURIComponent(expiry)}`);
@@ -246,7 +261,7 @@ async function loadNiftyChain() {
       });
     }
   }
-  return {
+  const chain = {
     source: 'NSE India',
     is_live: true,
     timestamp: records.timestamp,
@@ -254,6 +269,8 @@ async function loadNiftyChain() {
     expiry,
     quotes,
   };
+  niftyCache = { value: chain, expiresAt: Date.now() + LIVE_CACHE_MS };
+  return chain;
 }
 
 function parseNseDate(value) {
