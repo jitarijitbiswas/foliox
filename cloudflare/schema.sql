@@ -50,3 +50,25 @@ CREATE TABLE IF NOT EXISTS watchlist (
 
 CREATE INDEX IF NOT EXISTS idx_watchlist_account
   ON watchlist(account_id, created_at);
+
+CREATE TABLE IF NOT EXISTS pending_orders (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  expiry TEXT NOT NULL DEFAULT '',
+  strike REAL NOT NULL DEFAULT 0,
+  option_type TEXT NOT NULL DEFAULT '',
+  side TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
+  quantity INTEGER NOT NULL,
+  order_type TEXT NOT NULL CHECK (order_type IN ('LIMIT', 'STOP_LOSS')),
+  order_price REAL NOT NULL,
+  target_price REAL,
+  stop_loss REAL,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'FILLED', 'CANCELLED')),
+  filled_order_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_orders_account_status
+  ON pending_orders(account_id, status, created_at DESC);

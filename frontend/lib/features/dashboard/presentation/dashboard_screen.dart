@@ -79,6 +79,29 @@ class DashboardScreen extends ConsumerWidget {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     sliver: SliverToBoxAdapter(
+                      child: Text(
+                        'Open positions',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    sliver: SliverToBoxAdapter(
+                      child: _Positions(
+                        positions: portfolio?.positions ?? const [],
+                        onEdit: (position) =>
+                            _showRiskEditor(context, ref, position),
+                        onClose: (position) =>
+                            _confirmClose(context, ref, position),
+                        onRefresh: (_) => controller.refresh(silent: true),
+                        checkedAt: state.snapshot?.refreshedAt,
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    sliver: SliverToBoxAdapter(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -118,7 +141,7 @@ class DashboardScreen extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
                     sliver: SliverToBoxAdapter(
                       child: Text(
-                        'Open positions',
+                        'Pending orders',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ),
@@ -126,14 +149,9 @@ class DashboardScreen extends ConsumerWidget {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                     sliver: SliverToBoxAdapter(
-                      child: _Positions(
-                        positions: portfolio?.positions ?? const [],
-                        onEdit: (position) =>
-                            _showRiskEditor(context, ref, position),
-                        onClose: (position) =>
-                            _confirmClose(context, ref, position),
-                        onRefresh: (_) => controller.refresh(silent: true),
-                        checkedAt: state.snapshot?.refreshedAt,
+                      child: _PendingOrders(
+                        orders: state.snapshot?.pendingOrders ?? const [],
+                        onCancel: controller.cancelPendingOrder,
                       ),
                     ),
                   ),
@@ -169,6 +187,8 @@ class DashboardScreen extends ConsumerWidget {
     var lots = 1;
     var target = '';
     var stopLoss = '';
+    var orderPrice = '';
+    var orderType = EntryOrderType.market;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -184,8 +204,42 @@ class DashboardScreen extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${quote.name} · Market order'),
+                  Text('${quote.name} · ${orderType.name.toUpperCase()} order'),
                   const SizedBox(height: 20),
+                  SegmentedButton<EntryOrderType>(
+                    segments: const [
+                      ButtonSegment(
+                        value: EntryOrderType.market,
+                        label: Text('Market'),
+                      ),
+                      ButtonSegment(
+                        value: EntryOrderType.limit,
+                        label: Text('Limit'),
+                      ),
+                      ButtonSegment(
+                        value: EntryOrderType.stopLoss,
+                        label: Text('Stop-loss'),
+                      ),
+                    ],
+                    selected: {orderType},
+                    onSelectionChanged: (selection) =>
+                        setState(() => orderType = selection.first),
+                  ),
+                  if (orderType != EntryOrderType.market) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: orderType == EntryOrderType.limit
+                            ? 'Limit price'
+                            : 'Trigger price',
+                        prefixText: '₹ ',
+                      ),
+                      onChanged: (value) => orderPrice = value,
+                    ),
+                  ],
                   Row(
                     children: [
                       IconButton(
@@ -255,6 +309,8 @@ class DashboardScreen extends ConsumerWidget {
                         quote,
                         side,
                         lots,
+                        orderType: orderType,
+                        orderPrice: double.tryParse(orderPrice),
                         targetPrice: double.tryParse(target),
                         stopLoss: double.tryParse(stopLoss),
                       );
@@ -594,6 +650,61 @@ class _Positions extends StatelessWidget {
                             icon: const Icon(Icons.refresh),
                           ),
                         ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _PendingOrders extends StatelessWidget {
+  const _PendingOrders({required this.orders, required this.onCancel});
+  final List<PendingOrder> orders;
+  final ValueChanged<String> onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = orders.where((order) => order.status == 'PENDING').toList();
+    if (pending.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: Text('No pending limit or stop-loss orders.')),
+        ),
+      );
+    }
+    return Card(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: const [
+            DataColumn(label: Text('Symbol')),
+            DataColumn(label: Text('Side')),
+            DataColumn(label: Text('Type')),
+            DataColumn(label: Text('Qty')),
+            DataColumn(label: Text('Price / Trigger')),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Action')),
+          ],
+          rows: pending
+              .map(
+                (order) => DataRow(
+                  cells: [
+                    DataCell(Text(order.symbol)),
+                    DataCell(Text(order.side)),
+                    DataCell(Text(order.orderType.replaceAll('_', ' '))),
+                    DataCell(Text('${order.quantity}')),
+                    DataCell(Text(_money(order.orderPrice))),
+                    DataCell(Text(order.status)),
+                    DataCell(
+                      TextButton(
+                        onPressed: () => onCancel(order.id),
+                        child: const Text('Cancel'),
                       ),
                     ),
                   ],

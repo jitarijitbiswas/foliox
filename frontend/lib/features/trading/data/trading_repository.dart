@@ -38,6 +38,8 @@ class TradingRepository {
     required String symbol,
     required OrderSide side,
     required int quantity,
+    EntryOrderType orderType = EntryOrderType.market,
+    double? orderPrice,
     double? targetPrice,
     double? stopLoss,
   }) async {
@@ -47,6 +49,12 @@ class TradingRepository {
         'symbol': symbol,
         'side': side == OrderSide.buy ? 'BUY' : 'SELL',
         'quantity': quantity,
+        'order_type': switch (orderType) {
+          EntryOrderType.market => 'MARKET',
+          EntryOrderType.limit => 'LIMIT',
+          EntryOrderType.stopLoss => 'STOP_LOSS',
+        },
+        'order_price': orderPrice,
         'target_price': targetPrice,
         'stop_loss': stopLoss,
       },
@@ -66,4 +74,7 @@ class TradingRepository {
 
   Future<void> closeTrade(String orderId) =>
       _dio.post<void>('/trading/orders/$orderId/close');
+
+  Future<void> cancelPendingOrder(String orderId) =>
+      _dio.delete<void>('/trading/pending-orders/$orderId');
 }

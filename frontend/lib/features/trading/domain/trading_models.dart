@@ -1,5 +1,7 @@
 enum OrderSide { buy, sell }
 
+enum EntryOrderType { market, limit, stopLoss }
+
 class Quote {
   const Quote({
     required this.symbol,
@@ -216,6 +218,39 @@ class TradeOrder {
   final DateTime createdAt;
 }
 
+class PendingOrder {
+  const PendingOrder({
+    required this.id,
+    required this.symbol,
+    required this.side,
+    required this.quantity,
+    required this.orderType,
+    required this.orderPrice,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory PendingOrder.fromJson(Map<String, dynamic> json) => PendingOrder(
+    id: json['id'].toString(),
+    symbol: json['symbol'].toString(),
+    side: json['side'].toString(),
+    quantity: json['quantity'] as int,
+    orderType: json['order_type'].toString(),
+    orderPrice: _number(json['order_price']),
+    status: json['status'].toString(),
+    createdAt: DateTime.parse(json['created_at'].toString()),
+  );
+
+  final String id;
+  final String symbol;
+  final String side;
+  final int quantity;
+  final String orderType;
+  final double orderPrice;
+  final String status;
+  final DateTime createdAt;
+}
+
 class TradingSnapshot {
   const TradingSnapshot({
     required this.quotes,
@@ -225,6 +260,7 @@ class TradingSnapshot {
     this.expiry = '',
     this.timestamp = '',
     this.refreshedAt,
+    this.pendingOrders = const [],
   });
 
   factory TradingSnapshot.fromJson(Map<String, dynamic> json) =>
@@ -244,6 +280,9 @@ class TradingSnapshot {
         refreshedAt: json['refreshed_at'] == null
             ? null
             : DateTime.parse(json['refreshed_at'].toString()),
+        pendingOrders: (json['pending_orders'] as List<dynamic>? ?? const [])
+            .map((item) => PendingOrder.fromJson(item as Map<String, dynamic>))
+            .toList(),
       );
 
   final List<Quote> quotes;
@@ -253,6 +292,7 @@ class TradingSnapshot {
   final String expiry;
   final String timestamp;
   final DateTime? refreshedAt;
+  final List<PendingOrder> pendingOrders;
 
   TradingSnapshot copyWith({
     List<Quote>? quotes,
@@ -266,6 +306,7 @@ class TradingSnapshot {
     expiry: expiry,
     timestamp: timestamp ?? this.timestamp,
     refreshedAt: refreshedAt,
+    pendingOrders: pendingOrders,
   );
 }
 

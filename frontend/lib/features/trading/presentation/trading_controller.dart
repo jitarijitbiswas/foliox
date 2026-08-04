@@ -348,10 +348,22 @@ class TradingController extends StateNotifier<TradingState> {
     }
   }
 
+  Future<void> cancelPendingOrder(String orderId) async {
+    try {
+      await _repository.cancelPendingOrder(orderId);
+      await refresh(silent: true);
+      state = state.copyWith(message: 'Pending order cancelled');
+    } catch (error) {
+      state = state.copyWith(error: _messageFor(error));
+    }
+  }
+
   Future<bool> placeOrder(
     Quote quote,
     OrderSide side,
     int lots, {
+    EntryOrderType orderType = EntryOrderType.market,
+    double? orderPrice,
     double? targetPrice,
     double? stopLoss,
   }) async {
@@ -361,6 +373,8 @@ class TradingController extends StateNotifier<TradingState> {
         symbol: quote.symbol,
         side: side,
         quantity: lots * quote.lotSize,
+        orderType: orderType,
+        orderPrice: orderPrice,
         targetPrice: targetPrice,
         stopLoss: stopLoss,
       );
@@ -368,8 +382,9 @@ class TradingController extends StateNotifier<TradingState> {
       state = state.copyWith(
         snapshot: snapshot,
         isSubmitting: false,
-        message:
-            '${side == OrderSide.buy ? 'Bought' : 'Sold'} $lots lot(s) of ${quote.symbol}',
+        message: orderType == EntryOrderType.market
+            ? '${side == OrderSide.buy ? 'Bought' : 'Sold'} $lots lot(s) of ${quote.symbol}'
+            : '${orderType == EntryOrderType.limit ? 'Limit' : 'Stop-loss'} order placed for ${quote.symbol}',
       );
       return true;
     } catch (error) {

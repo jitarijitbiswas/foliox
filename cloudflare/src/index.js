@@ -36,6 +36,7 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/v1/trading/snapshot') {
         const chain = await loadNiftyChain();
         const quotes = await loadAccountQuotes(env.DB, account.id, chain);
+        await processPendingOrders(env.DB, account.id, quotes);
         await processExits(env.DB, account.id, quotes);
         return json(await snapshot(env.DB, account.id, chain, quotes), 200, headers);
       }
@@ -57,10 +58,19 @@ export default {
         const result = await updateRisk(env.DB, account.id, orderId, await request.json());
         return json(result, 200, headers);
       }
+      if (request.method === 'DELETE' &&
+          url.pathname.startsWith('/api/v1/trading/pending-orders/')) {
+        const pendingId = url.pathname.slice('/api/v1/trading/pending-orders/'.length);
+        await env.DB.prepare(`UPDATE pending_orders SET status='CANCELLED', updated_at=?
+          WHERE id=? AND account_id=? AND status='PENDING'`)
+          .bind(new Date().toISOString(), pendingId, account.id).run();
+        return json({ ok: true }, 200, headers);
+      }
       if (request.method === 'POST' && url.pathname === '/api/v1/trading/reset') {
         await env.DB.batch([
           env.DB.prepare('DELETE FROM trade_events WHERE account_id = ?').bind(account.id),
           env.DB.prepare('DELETE FROM orders WHERE account_id = ?').bind(account.id),
+          env.DB.prepare('DELETE FROM pending_orders WHERE account_id = ?').bind(account.id),
         ]);
         return json({ ok: true }, 200, headers);
       }
@@ -77,12 +87,14 @@ export default {
 
 async function monitorOpenOrders(db) {
   const { results } = await db.prepare(
-    "SELECT DISTINCT account_id FROM orders WHERE status = 'OPEN'",
+    `SELECT DISTINCT account_id FROM orders WHERE status='OPEN'
+     UNION SELECT DISTINCT account_id FROM pending_orders WHERE status='PENDING'`,
   ).all();
   if (!results.length) return;
   const chain = await loadNiftyChain();
   for (const row of results) {
     const quotes = await loadAccountQuotes(db, row.account_id, chain);
+    await processPendingOrders(db, row.account_id, quotes);
     await processExits(db, row.account_id, quotes);
   }
 }
@@ -221,7 +233,10 @@ async function addWatchlist(db, accountId, body) {
 async function loadAccountQuotes(db, accountId, chain) {
   const { results } = await db.prepare(`SELECT symbol, instrument_type FROM watchlist WHERE account_id=?
     UNION SELECT symbol, CASE WHEN option_type='' THEN 'EQUITY' ELSE 'OPTION' END
-    FROM orders WHERE account_id=? AND status='OPEN'`).bind(accountId, accountId).all();
+    FROM orders WHERE account_id=? AND status='OPEN'
+    UNION SELECT symbol, CASE WHEN option_type='' THEN 'EQUITY' ELSE 'OPTION' END
+    FROM pending_orders WHERE account_id=? AND status='PENDING'`)
+    .bind(accountId, accountId, accountId).all();
   const chainMap = new Map(chain.quotes.map((item) => [item.symbol, item]));
   const quotes = [];
   for (const row of results) {
@@ -290,25 +305,43 @@ function startOfToday() {
 
 async function placeOrder(db, accountId, body, chain) {
   const side = String(body.side || '').toUpperCase();
+  const orderType = String(body.order_type || 'MARKET').toUpperCase();
   const quantity = Number(body.quantity);
   const quote = chain.quotes.find((item) => item.symbol === body.symbol) ||
     await loadEquityQuote(String(body.symbol || '').toUpperCase());
   if (!quote) throw new Error('Contract is not present in the current NSE option chain');
   if (!['BUY', 'SELL'].includes(side)) throw new Error('Side must be BUY or SELL');
+  if (!['MARKET', 'LIMIT', 'STOP_LOSS'].includes(orderType)) {
+    throw new Error('Order type must be MARKET, LIMIT, or STOP_LOSS');
+  }
   if (!Number.isInteger(quantity) || quantity <= 0 || quantity % quote.lot_size !== 0) {
     throw new Error(`Quantity must be a positive multiple of ${quote.lot_size}`);
   }
   const entry = side === 'BUY' ? quote.ask : quote.bid;
+  const orderPrice = orderType === 'MARKET' ? entry : nullableNumber(body.order_price);
+  if (orderType !== 'MARKET' && orderPrice == null) {
+    throw new Error('Limit or trigger price is required');
+  }
   const target = nullableNumber(body.target_price);
   const stop = nullableNumber(body.stop_loss);
-  if (target != null && (side === 'BUY' ? target <= entry : target >= entry)) {
+  const riskReference = orderPrice ?? entry;
+  if (target != null && (side === 'BUY' ? target <= riskReference : target >= riskReference)) {
     throw new Error(`Target must be ${side === 'BUY' ? 'above' : 'below'} entry price`);
   }
-  if (stop != null && (side === 'BUY' ? stop >= entry : stop <= entry)) {
+  if (stop != null && (side === 'BUY' ? stop >= riskReference : stop <= riskReference)) {
     throw new Error(`Stop-loss must be ${side === 'BUY' ? 'below' : 'above'} entry price`);
   }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  if (orderType !== 'MARKET') {
+    await db.prepare(`INSERT INTO pending_orders
+      (id, account_id, symbol, expiry, strike, option_type, side, quantity,
+       order_type, order_price, target_price, stop_loss, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)`)
+      .bind(id, accountId, quote.symbol, quote.expiry, quote.strike, quote.option_type,
+        side, quantity, orderType, orderPrice, target, stop, now, now).run();
+    return { id, status: 'PENDING', order_type: orderType, order_price: orderPrice };
+  }
   await db.batch([
     db.prepare(`INSERT INTO orders
       (id, account_id, symbol, expiry, strike, option_type, side, quantity, entry_price,
@@ -322,6 +355,41 @@ async function placeOrder(db, accountId, body, chain) {
       .bind(crypto.randomUUID(), id, accountId, entry, quantity, now),
   ]);
   return { id, status: 'OPEN', entry_price: entry };
+}
+
+async function processPendingOrders(db, accountId, quotes) {
+  const { results } = await db.prepare(
+    "SELECT * FROM pending_orders WHERE account_id=? AND status='PENDING'",
+  ).bind(accountId).all();
+  const quoteMap = new Map(quotes.map((quote) => [quote.symbol, quote]));
+  for (const pending of results) {
+    const quote = quoteMap.get(pending.symbol);
+    if (!quote) continue;
+    const executable = pending.side === 'BUY' ? quote.ask : quote.bid;
+    const shouldFill = pending.order_type === 'LIMIT'
+      ? (pending.side === 'BUY' ? executable <= pending.order_price : executable >= pending.order_price)
+      : (pending.side === 'BUY' ? executable >= pending.order_price : executable <= pending.order_price);
+    if (!shouldFill) continue;
+    const orderId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.batch([
+      db.prepare(`INSERT INTO orders
+        (id, account_id, symbol, expiry, strike, option_type, side, quantity, entry_price,
+         target_price, stop_loss, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)`)
+        .bind(orderId, accountId, pending.symbol, pending.expiry, pending.strike,
+          pending.option_type, pending.side, pending.quantity, executable,
+          pending.target_price, pending.stop_loss, now, now),
+      db.prepare(`INSERT INTO trade_events
+        (id, order_id, account_id, event_type, price, quantity, reason, created_at)
+        VALUES (?, ?, ?, 'ENTRY', ?, ?, ?, ?)`)
+        .bind(crypto.randomUUID(), orderId, accountId, executable, pending.quantity,
+          pending.order_type, now),
+      db.prepare(`UPDATE pending_orders SET status='FILLED', filled_order_id=?, updated_at=?
+        WHERE id=? AND account_id=? AND status='PENDING'`)
+        .bind(orderId, now, pending.id, accountId),
+    ]);
+  }
 }
 
 async function updateRisk(db, accountId, orderId, body) {
@@ -402,6 +470,9 @@ async function snapshot(db, accountId, chain, accountQuotes) {
     'SELECT * FROM orders WHERE account_id = ? ORDER BY created_at DESC',
   ).bind(accountId).all();
   const quoteMap = new Map(accountQuotes.map((quote) => [quote.symbol, quote]));
+  const { results: pendingOrders } = await db.prepare(
+    "SELECT * FROM pending_orders WHERE account_id=? ORDER BY created_at DESC",
+  ).bind(accountId).all();
   let cash = INITIAL_BALANCE;
   let realized = 0;
   let unrealized = 0;
@@ -446,6 +517,7 @@ async function snapshot(db, accountId, chain, accountQuotes) {
       positions,
     },
     orders,
+    pending_orders: pendingOrders,
   };
 }
 
