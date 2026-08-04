@@ -42,6 +42,25 @@ class Quote {
   final String optionType;
 
   bool get isTradable => instrumentType != 'INDEX';
+
+  Quote copyWith({
+    double? ltp,
+    double? bid,
+    double? ask,
+    double? changePercent,
+  }) => Quote(
+    symbol: symbol,
+    name: name,
+    instrumentType: instrumentType,
+    lotSize: lotSize,
+    ltp: ltp ?? this.ltp,
+    bid: bid ?? this.bid,
+    ask: ask ?? this.ask,
+    changePercent: changePercent ?? this.changePercent,
+    expiry: expiry,
+    strike: strike,
+    optionType: optionType,
+  );
 }
 
 class Position {
@@ -87,6 +106,26 @@ class Position {
   final double? stopLoss;
   final String orderId;
   final String timestamp;
+
+  Position copyWith({
+    double? ltp,
+    double? unrealizedPnl,
+    double? netPnl,
+    String? timestamp,
+  }) => Position(
+    symbol: symbol,
+    quantity: quantity,
+    averagePrice: averagePrice,
+    ltp: ltp ?? this.ltp,
+    realizedPnl: realizedPnl,
+    unrealizedPnl: unrealizedPnl ?? this.unrealizedPnl,
+    netPnl: netPnl ?? this.netPnl,
+    side: side,
+    targetPrice: targetPrice,
+    stopLoss: stopLoss,
+    orderId: orderId,
+    timestamp: timestamp ?? this.timestamp,
+  );
 }
 
 class Portfolio {
@@ -116,6 +155,20 @@ class Portfolio {
   final double unrealizedPnl;
   final double totalPnl;
   final List<Position> positions;
+
+  Portfolio copyWith({
+    double? equity,
+    double? unrealizedPnl,
+    double? totalPnl,
+    List<Position>? positions,
+  }) => Portfolio(
+    cashBalance: cashBalance,
+    equity: equity ?? this.equity,
+    realizedPnl: realizedPnl,
+    unrealizedPnl: unrealizedPnl ?? this.unrealizedPnl,
+    totalPnl: totalPnl ?? this.totalPnl,
+    positions: positions ?? this.positions,
+  );
 }
 
 class TradeOrder {
@@ -200,6 +253,20 @@ class TradingSnapshot {
   final String expiry;
   final String timestamp;
   final DateTime? refreshedAt;
+
+  TradingSnapshot copyWith({
+    List<Quote>? quotes,
+    Portfolio? portfolio,
+    String? timestamp,
+  }) => TradingSnapshot(
+    quotes: quotes ?? this.quotes,
+    portfolio: portfolio ?? this.portfolio,
+    orders: orders,
+    underlying: underlying,
+    expiry: expiry,
+    timestamp: timestamp ?? this.timestamp,
+    refreshedAt: refreshedAt,
+  );
 }
 
 double _number(dynamic value) => double.parse(value.toString());

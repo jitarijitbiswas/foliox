@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../data/trading_repository.dart';
 import '../domain/trading_models.dart';
@@ -84,6 +86,11 @@ class TradingController extends StateNotifier<TradingState> {
   Timer? _searchDebounce;
   bool _refreshing = false;
   bool _refreshQueued = false;
+  WebSocketChannel? _niftyStream;
+  StreamSubscription<dynamic>? _niftySubscription;
+  Timer? _streamReconnect;
+  String? _streamExpiry;
+  final Map<String, DateTime> _streamTickTimes = {};
 
   Future<void> refresh({bool silent = false}) async {
     if (_refreshing) {
@@ -93,8 +100,9 @@ class TradingController extends StateNotifier<TradingState> {
     _refreshing = true;
     if (!silent) state = state.copyWith(isLoading: true, clearFeedback: true);
     try {
-      final snapshot = await _repository.snapshot();
+      final snapshot = _mergeFreshStreamPrices(await _repository.snapshot());
       state = state.copyWith(snapshot: snapshot, isLoading: false);
+      _connectNiftyStream(snapshot.expiry);
     } catch (error) {
       state = state.copyWith(isLoading: false, error: _messageFor(error));
     } finally {
@@ -104,6 +112,169 @@ class TradingController extends StateNotifier<TradingState> {
         unawaited(refresh(silent: true));
       }
     }
+  }
+
+  void _connectNiftyStream(String expiry) {
+    if (expiry.isEmpty || (_streamExpiry == expiry && _niftyStream != null)) {
+      return;
+    }
+    _closeNiftyStream();
+    _streamExpiry = expiry;
+    final uri = Uri.https('streamer.nseindia.com', '/streams/fo/mbp', {
+      'symbol': 'NIFTY',
+      'expiry': expiry,
+    }).replace(scheme: 'wss');
+    try {
+      final channel = WebSocketChannel.connect(uri);
+      _niftyStream = channel;
+      _niftySubscription = channel.stream.listen(
+        _applyNiftyTick,
+        onError: (_) => _scheduleStreamReconnect(),
+        onDone: _scheduleStreamReconnect,
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _scheduleStreamReconnect();
+    }
+  }
+
+  void _scheduleStreamReconnect() {
+    _niftySubscription?.cancel();
+    _niftySubscription = null;
+    _niftyStream = null;
+    _streamReconnect?.cancel();
+    _streamReconnect = Timer(const Duration(seconds: 2), () {
+      final expiry = _streamExpiry;
+      _streamExpiry = null;
+      if (expiry != null) _connectNiftyStream(expiry);
+    });
+  }
+
+  void _closeNiftyStream() {
+    _streamReconnect?.cancel();
+    _niftySubscription?.cancel();
+    _niftyStream?.sink.close();
+    _niftySubscription = null;
+    _niftyStream = null;
+  }
+
+  void _applyNiftyTick(dynamic rawMessage) {
+    final current = state.snapshot;
+    if (current == null || rawMessage is! String) return;
+    final decoded = jsonDecode(rawMessage);
+    if (decoded is! Map<String, dynamic> || decoded['flag'] == 'HEARTBEAT') {
+      return;
+    }
+    final strike = _number(decoded['strikePrice']);
+    final tickTimestamp = decoded['timestamp']?.toString() ?? '';
+    var changed = false;
+    final quotes = current.quotes.map((quote) {
+      if (quote.instrumentType != 'OPTION' || quote.strike != strike) {
+        return quote;
+      }
+      final payload = decoded[quote.optionType];
+      if (payload is! Map<String, dynamic>) return quote;
+      changed = true;
+      _streamTickTimes[quote.symbol] = DateTime.now();
+      return quote.copyWith(
+        ltp: _number(payload['lastPrice']) ?? quote.ltp,
+        bid: _number(payload['buyPrice1']) ?? quote.bid,
+        ask: _number(payload['sellPrice1']) ?? quote.ask,
+        changePercent: _number(payload['pChange']) ?? quote.changePercent,
+      );
+    }).toList();
+    if (!changed) return;
+    final quoteMap = {for (final quote in quotes) quote.symbol: quote};
+    final positions = current.portfolio.positions.map((position) {
+      final quote = quoteMap[position.symbol];
+      if (quote == null || !_streamTickTimes.containsKey(position.symbol)) {
+        return position;
+      }
+      final direction = position.side == 'SELL' ? -1 : 1;
+      final pnl =
+          (quote.ltp - position.averagePrice) * position.quantity * direction;
+      return position.copyWith(
+        ltp: quote.ltp,
+        unrealizedPnl: pnl,
+        netPnl: position.realizedPnl + pnl,
+        timestamp: tickTimestamp,
+      );
+    }).toList();
+    final unrealized = positions.fold<double>(
+      0,
+      (total, position) => total + position.unrealizedPnl,
+    );
+    final portfolio = current.portfolio.copyWith(
+      equity:
+          current.portfolio.equity +
+          (unrealized - current.portfolio.unrealizedPnl),
+      unrealizedPnl: unrealized,
+      totalPnl: current.portfolio.realizedPnl + unrealized,
+      positions: positions,
+    );
+    state = state.copyWith(
+      snapshot: current.copyWith(
+        quotes: quotes,
+        portfolio: portfolio,
+        timestamp: tickTimestamp,
+      ),
+    );
+  }
+
+  TradingSnapshot _mergeFreshStreamPrices(TradingSnapshot incoming) {
+    final current = state.snapshot;
+    if (current == null) return incoming;
+    final now = DateTime.now();
+    final currentQuotes = {
+      for (final quote in current.quotes) quote.symbol: quote,
+    };
+    final quotes = incoming.quotes.map((quote) {
+      final tickTime = _streamTickTimes[quote.symbol];
+      if (tickTime != null &&
+          now.difference(tickTime) < const Duration(seconds: 15)) {
+        return currentQuotes[quote.symbol] ?? quote;
+      }
+      return quote;
+    }).toList();
+    final quoteMap = {for (final quote in quotes) quote.symbol: quote};
+    final positions = incoming.portfolio.positions.map((position) {
+      final tickTime = _streamTickTimes[position.symbol];
+      final quote = quoteMap[position.symbol];
+      if (tickTime == null ||
+          quote == null ||
+          now.difference(tickTime) >= const Duration(seconds: 15)) {
+        return position;
+      }
+      final direction = position.side == 'SELL' ? -1 : 1;
+      final pnl =
+          (quote.ltp - position.averagePrice) * position.quantity * direction;
+      return position.copyWith(
+        ltp: quote.ltp,
+        unrealizedPnl: pnl,
+        netPnl: position.realizedPnl + pnl,
+        timestamp: current.timestamp,
+      );
+    }).toList();
+    final unrealized = positions.fold<double>(
+      0,
+      (total, position) => total + position.unrealizedPnl,
+    );
+    return incoming.copyWith(
+      quotes: quotes,
+      portfolio: incoming.portfolio.copyWith(
+        equity:
+            incoming.portfolio.equity +
+            (unrealized - incoming.portfolio.unrealizedPnl),
+        unrealizedPnl: unrealized,
+        totalPnl: incoming.portfolio.realizedPnl + unrealized,
+        positions: positions,
+      ),
+    );
+  }
+
+  static double? _number(dynamic value) {
+    if (value == null) return null;
+    return double.tryParse(value.toString());
   }
 
   void search(String value) {
@@ -228,6 +399,7 @@ class TradingController extends StateNotifier<TradingState> {
   void dispose() {
     _timer?.cancel();
     _searchDebounce?.cancel();
+    _closeNiftyStream();
     super.dispose();
   }
 }
