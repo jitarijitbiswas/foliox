@@ -3,6 +3,9 @@
   "name": "foliox",
   "main": "cloudflare/src/index.js",
   "compatibility_date": "2026-08-04",
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "assets": {
     "directory": "frontend/build/web",
     "binding": "ASSETS",

@@ -41,7 +41,19 @@ export default {
       return json({ detail: error.message || 'Request failed' }, 502, headers);
     }
   },
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(monitorOpenOrders(env.DB));
+  },
 };
+
+async function monitorOpenOrders(db) {
+  const { results } = await db.prepare(
+    "SELECT DISTINCT account_id FROM orders WHERE status = 'OPEN'",
+  ).all();
+  if (!results.length) return;
+  const chain = await loadNiftyChain();
+  for (const row of results) await processExits(db, row.account_id, chain.quotes);
+}
 
 function getAccount(request) {
   const match = request.headers.get('cookie')?.match(/(?:^|;\s*)foliox_account=([^;]+)/);
