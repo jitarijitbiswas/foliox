@@ -35,3 +35,18 @@ CREATE TABLE IF NOT EXISTS trade_events (
 
 CREATE INDEX IF NOT EXISTS idx_trade_events_account
   ON trade_events(account_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS watchlist (
+  account_id TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  instrument_type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  expiry TEXT NOT NULL DEFAULT '',
+  strike REAL NOT NULL DEFAULT 0,
+  option_type TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(account_id, symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_watchlist_account
+  ON watchlist(account_id, created_at);

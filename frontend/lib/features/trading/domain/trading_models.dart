@@ -56,6 +56,7 @@ class Position {
     this.side = '',
     this.targetPrice,
     this.stopLoss,
+    this.orderId = '',
   });
 
   factory Position.fromJson(Map<String, dynamic> json) => Position(
@@ -69,6 +70,7 @@ class Position {
     side: json['side']?.toString() ?? '',
     targetPrice: _nullableNumber(json['target_price']),
     stopLoss: _nullableNumber(json['stop_loss']),
+    orderId: json['order_id']?.toString() ?? '',
   );
 
   final String symbol;
@@ -81,6 +83,7 @@ class Position {
   final String side;
   final double? targetPrice;
   final double? stopLoss;
+  final String orderId;
 }
 
 class Portfolio {

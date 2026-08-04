@@ -56,6 +56,20 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (state.isSearching)
+                    const SliverToBoxAdapter(
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  if (state.searchResults.isNotEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      sliver: SliverToBoxAdapter(
+                        child: _SearchResults(
+                          quotes: state.searchResults,
+                          onAdd: controller.addToWatchlist,
+                        ),
+                      ),
+                    ),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     sliver: SliverToBoxAdapter(
@@ -69,12 +83,12 @@ class DashboardScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'NIFTY option chain',
+                            'Watchlist',
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${state.snapshot?.expiry ?? 'Loading expiry'} · NIFTY ${_money(state.snapshot?.underlying ?? 0)} · 50-point strikes · Lot 65',
+                            'Add NSE stocks or NIFTY option strikes · NIFTY ${_money(state.snapshot?.underlying ?? 0)}',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -90,6 +104,8 @@ class DashboardScreen extends ConsumerWidget {
                         final quote = state.visibleQuotes[index];
                         return _QuoteTile(
                           quote: quote,
+                          onRemove: () =>
+                              controller.removeFromWatchlist(quote.symbol),
                           onTrade: quote.isTradable
                               ? (side) =>
                                     _showOrderTicket(context, ref, quote, side)
@@ -112,6 +128,8 @@ class DashboardScreen extends ConsumerWidget {
                     sliver: SliverToBoxAdapter(
                       child: _Positions(
                         positions: portfolio?.positions ?? const [],
+                        onEdit: (position) =>
+                            _showRiskEditor(context, ref, position),
                       ),
                     ),
                   ),
@@ -250,6 +268,101 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _showRiskEditor(
+    BuildContext context,
+    WidgetRef ref,
+    Position position,
+  ) async {
+    var target = position.targetPrice?.toString() ?? '';
+    var stopLoss = position.stopLoss?.toString() ?? '';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Edit ${position.symbol}'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Entry ${_money(position.averagePrice)} · ${position.side}'),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: target,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Target price',
+                  prefixText: '₹ ',
+                ),
+                onChanged: (value) => target = value,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: stopLoss,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Stop-loss price',
+                  prefixText: '₹ ',
+                ),
+                onChanged: (value) => stopLoss = value,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final updated = await ref
+                  .read(tradingControllerProvider.notifier)
+                  .updateRisk(
+                    position.orderId,
+                    targetPrice: double.tryParse(target),
+                    stopLoss: double.tryParse(stopLoss),
+                  );
+              if (updated && dialogContext.mounted) {
+                Navigator.pop(dialogContext);
+              }
+            },
+            child: const Text('Save changes'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchResults extends StatelessWidget {
+  const _SearchResults({required this.quotes, required this.onAdd});
+  final List<Quote> quotes;
+  final ValueChanged<Quote> onAdd;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Column(
+      children: [
+        const ListTile(title: Text('Search results')),
+        ...quotes.map(
+          (quote) => ListTile(
+            title: Text(quote.symbol),
+            subtitle: Text(quote.name),
+            trailing: IconButton(
+              tooltip: 'Add to watchlist',
+              onPressed: () => onAdd(quote),
+              icon: const Icon(Icons.add_circle_outline),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _Metrics extends StatelessWidget {
@@ -308,9 +421,10 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _QuoteTile extends StatelessWidget {
-  const _QuoteTile({required this.quote, this.onTrade});
+  const _QuoteTile({required this.quote, this.onTrade, this.onRemove});
   final Quote quote;
   final ValueChanged<OrderSide>? onTrade;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -352,6 +466,11 @@ class _QuoteTile extends StatelessWidget {
             onPressed: onTrade == null ? null : () => onTrade!(OrderSide.sell),
             child: const Text('SELL'),
           ),
+          IconButton(
+            tooltip: 'Remove from watchlist',
+            onPressed: onRemove,
+            icon: const Icon(Icons.close),
+          ),
         ],
       ),
     ),
@@ -359,8 +478,9 @@ class _QuoteTile extends StatelessWidget {
 }
 
 class _Positions extends StatelessWidget {
-  const _Positions({required this.positions});
+  const _Positions({required this.positions, required this.onEdit});
   final List<Position> positions;
+  final ValueChanged<Position> onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -387,6 +507,7 @@ class _Positions extends StatelessWidget {
             DataColumn(label: Text('Target')),
             DataColumn(label: Text('Stop-loss')),
             DataColumn(label: Text('P&L')),
+            DataColumn(label: Text('Actions')),
           ],
           rows: positions
               .map(
@@ -400,6 +521,12 @@ class _Positions extends StatelessWidget {
                     DataCell(Text(_optionalMoney(position.targetPrice))),
                     DataCell(Text(_optionalMoney(position.stopLoss))),
                     DataCell(Text(_money(position.netPnl))),
+                    DataCell(
+                      TextButton(
+                        onPressed: () => onEdit(position),
+                        child: const Text('Edit target / SL'),
+                      ),
+                    ),
                   ],
                 ),
               )

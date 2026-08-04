@@ -17,16 +17,35 @@ export default {
       if (request.method === 'GET' && url.pathname === '/api/v1/market/nifty') {
         return json(await loadNiftyChain(), 200, headers);
       }
+      if (request.method === 'GET' && url.pathname === '/api/v1/market/search') {
+        return json(await searchMarket(url.searchParams.get('q') || ''), 200, headers);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/v1/watchlist') {
+        const result = await addWatchlist(env.DB, account.id, await request.json());
+        return json(result, 201, headers);
+      }
+      if (request.method === 'DELETE' && url.pathname.startsWith('/api/v1/watchlist/')) {
+        const symbol = decodeURIComponent(url.pathname.slice('/api/v1/watchlist/'.length));
+        await env.DB.prepare('DELETE FROM watchlist WHERE account_id=? AND symbol=?')
+          .bind(account.id, symbol).run();
+        return json({ ok: true }, 200, headers);
+      }
       if (request.method === 'GET' && url.pathname === '/api/v1/trading/snapshot') {
         const chain = await loadNiftyChain();
-        await processExits(env.DB, account.id, chain.quotes);
-        return json(await snapshot(env.DB, account.id, chain), 200, headers);
+        const quotes = await loadAccountQuotes(env.DB, account.id, chain);
+        await processExits(env.DB, account.id, quotes);
+        return json(await snapshot(env.DB, account.id, chain, quotes), 200, headers);
       }
       if (request.method === 'POST' && url.pathname === '/api/v1/trading/orders') {
         const body = await request.json();
         const chain = await loadNiftyChain();
         const order = await placeOrder(env.DB, account.id, body, chain);
         return json(order, 201, headers);
+      }
+      if (request.method === 'PATCH' && url.pathname.startsWith('/api/v1/trading/orders/')) {
+        const orderId = url.pathname.slice('/api/v1/trading/orders/'.length);
+        const result = await updateRisk(env.DB, account.id, orderId, await request.json());
+        return json(result, 200, headers);
       }
       if (request.method === 'POST' && url.pathname === '/api/v1/trading/reset') {
         await env.DB.batch([
@@ -52,7 +71,10 @@ async function monitorOpenOrders(db) {
   ).all();
   if (!results.length) return;
   const chain = await loadNiftyChain();
-  for (const row of results) await processExits(db, row.account_id, chain.quotes);
+  for (const row of results) {
+    const quotes = await loadAccountQuotes(db, row.account_id, chain);
+    await processExits(db, row.account_id, quotes);
+  }
 }
 
 function getAccount(request) {
@@ -64,18 +86,18 @@ function json(value, status, headers = {}) {
   return new Response(JSON.stringify(value), { status, headers });
 }
 
-async function nseJson(path) {
+async function nseJson(path, referer = `${NSE_BASE}/option-chain?symbol=NIFTY`) {
   const common = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36',
     accept: 'application/json,text/plain,*/*',
     'accept-language': 'en-US,en;q=0.9',
-    referer: `${NSE_BASE}/option-chain?symbol=NIFTY`,
+    referer,
   };
   let response = await fetch(`${NSE_BASE}${path}`, { headers: common });
   let text = await response.text();
   if (response.ok && text.length > 2) return JSON.parse(text);
 
-  const landing = await fetch(`${NSE_BASE}/option-chain?symbol=NIFTY`, { headers: common });
+  const landing = await fetch(referer, { headers: common });
   const cookie = landing.headers.get('set-cookie')?.split(',').map((item) => item.split(';')[0]).join('; ');
   response = await fetch(`${NSE_BASE}${path}`, {
     headers: { ...common, ...(cookie ? { cookie } : {}) },
@@ -83,6 +105,96 @@ async function nseJson(path) {
   text = await response.text();
   if (!response.ok || text.length <= 2) throw new Error('NSE live data is temporarily unavailable');
   return JSON.parse(text);
+}
+
+async function searchMarket(rawQuery) {
+  const query = rawQuery.trim();
+  if (query.length < 2) return [];
+  const [equities, chain] = await Promise.all([
+    nseJson(`/api/smart-search/equity?q=${encodeURIComponent(query)}`, `${NSE_BASE}/`),
+    loadNiftyChain(),
+  ]);
+  const normalized = query.toUpperCase().replace(/\s+/g, '');
+  const equityResults = equities
+    .filter((item) => item.series === 'EQ')
+    .slice(0, 8)
+    .map((item) => ({
+      symbol: item.symbol,
+      name: item.companyName,
+      instrument_type: 'EQUITY',
+      lot_size: 1,
+      expiry: '',
+      strike: 0,
+      option_type: '',
+      ltp: Number(item.lastPrice || 0),
+      bid: Number(item.lastPrice || 0),
+      ask: Number(item.lastPrice || 0),
+      change_percent: Number(item.pChange || 0),
+    }));
+  const optionResults = chain.quotes.filter((item) =>
+    item.symbol.toUpperCase().includes(normalized) ||
+    item.name.toUpperCase().replace(/\s+/g, '').includes(normalized),
+  ).slice(0, 20);
+  return [...equityResults, ...optionResults];
+}
+
+async function loadEquityQuote(symbol) {
+  const metadata = await nseJson(
+    `/api/NextApi/apiClient/GetQuoteApi?functionName=getMetaData&symbol=${encodeURIComponent(symbol)}`,
+    `${NSE_BASE}/`,
+  );
+  const path = `/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=${encodeURIComponent(metadata.marketType || 'N')}&series=EQ&symbol=${encodeURIComponent(symbol)}`;
+  const payload = await nseJson(path, `${NSE_BASE}/get-quote/equity/${encodeURIComponent(symbol)}`);
+  const item = payload.equityResponse?.[0];
+  if (!item) throw new Error(`NSE quote unavailable for ${symbol}`);
+  const book = item.orderBook;
+  const meta = item.metaData;
+  const ltp = Number(book.lastPrice || item.tradeInfo?.lastPrice || meta.closePrice);
+  return {
+    symbol: meta.symbol,
+    name: meta.companyName,
+    instrument_type: 'EQUITY',
+    expiry: '',
+    strike: 0,
+    option_type: '',
+    lot_size: 1,
+    ltp,
+    bid: Number(book.buyPrice1 || ltp),
+    ask: Number(book.sellPrice1 || ltp),
+    change_percent: Number(meta.pChange || 0),
+    open_interest: 0,
+    volume: Number(item.tradeInfo?.totalTradedVolume || 0),
+    timestamp: item.lastUpdateTime,
+  };
+}
+
+async function addWatchlist(db, accountId, body) {
+  const symbol = String(body.symbol || '').toUpperCase();
+  if (!symbol) throw new Error('Symbol is required');
+  const chain = await loadNiftyChain();
+  const quote = chain.quotes.find((item) => item.symbol === symbol) || await loadEquityQuote(symbol);
+  await db.prepare(`INSERT OR REPLACE INTO watchlist
+    (account_id, symbol, instrument_type, name, expiry, strike, option_type, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(accountId, quote.symbol, quote.instrument_type, quote.name, quote.expiry,
+      quote.strike, quote.option_type, new Date().toISOString()).run();
+  return quote;
+}
+
+async function loadAccountQuotes(db, accountId, chain) {
+  const { results } = await db.prepare(`SELECT symbol, instrument_type FROM watchlist WHERE account_id=?
+    UNION SELECT symbol, CASE WHEN option_type='' THEN 'EQUITY' ELSE 'OPTION' END
+    FROM orders WHERE account_id=? AND status='OPEN'`).bind(accountId, accountId).all();
+  const chainMap = new Map(chain.quotes.map((item) => [item.symbol, item]));
+  const quotes = [];
+  for (const row of results) {
+    const option = chainMap.get(row.symbol);
+    if (option) quotes.push(option);
+    else if (row.instrument_type === 'EQUITY') {
+      try { quotes.push(await loadEquityQuote(row.symbol)); } catch (error) { console.error(error); }
+    }
+  }
+  return quotes;
 }
 
 async function loadNiftyChain() {
@@ -93,7 +205,7 @@ async function loadNiftyChain() {
   if (!records?.data?.length) throw new Error('NSE returned an empty option chain');
   const quotes = [];
   for (const row of records.data) {
-    if (Math.abs(Number(row.strikePrice) - Number(records.underlyingValue)) > 500) continue;
+    if (Math.abs(Number(row.strikePrice) - Number(records.underlyingValue)) > 1750) continue;
     if (Number(row.strikePrice) % 50 !== 0) continue;
     for (const optionType of ['CE', 'PE']) {
       const item = row[optionType];
@@ -139,11 +251,12 @@ function startOfToday() {
 async function placeOrder(db, accountId, body, chain) {
   const side = String(body.side || '').toUpperCase();
   const quantity = Number(body.quantity);
-  const quote = chain.quotes.find((item) => item.symbol === body.symbol);
+  const quote = chain.quotes.find((item) => item.symbol === body.symbol) ||
+    await loadEquityQuote(String(body.symbol || '').toUpperCase());
   if (!quote) throw new Error('Contract is not present in the current NSE option chain');
   if (!['BUY', 'SELL'].includes(side)) throw new Error('Side must be BUY or SELL');
-  if (!Number.isInteger(quantity) || quantity <= 0 || quantity % LOT_SIZE !== 0) {
-    throw new Error(`Quantity must be a positive multiple of ${LOT_SIZE}`);
+  if (!Number.isInteger(quantity) || quantity <= 0 || quantity % quote.lot_size !== 0) {
+    throw new Error(`Quantity must be a positive multiple of ${quote.lot_size}`);
   }
   const entry = side === 'BUY' ? quote.ask : quote.bid;
   const target = nullableNumber(body.target_price);
@@ -169,6 +282,24 @@ async function placeOrder(db, accountId, body, chain) {
       .bind(crypto.randomUUID(), id, accountId, entry, quantity, now),
   ]);
   return { id, status: 'OPEN', entry_price: entry };
+}
+
+async function updateRisk(db, accountId, orderId, body) {
+  const order = await db.prepare(
+    "SELECT * FROM orders WHERE id=? AND account_id=? AND status='OPEN'",
+  ).bind(orderId, accountId).first();
+  if (!order) throw new Error('Open trade not found');
+  const target = nullableNumber(body.target_price);
+  const stop = nullableNumber(body.stop_loss);
+  if (target != null && (order.side === 'BUY' ? target <= order.entry_price : target >= order.entry_price)) {
+    throw new Error(`Target must be ${order.side === 'BUY' ? 'above' : 'below'} entry price`);
+  }
+  if (stop != null && (order.side === 'BUY' ? stop >= order.entry_price : stop <= order.entry_price)) {
+    throw new Error(`Stop-loss must be ${order.side === 'BUY' ? 'below' : 'above'} entry price`);
+  }
+  await db.prepare('UPDATE orders SET target_price=?, stop_loss=?, updated_at=? WHERE id=? AND account_id=?')
+    .bind(target, stop, new Date().toISOString(), orderId, accountId).run();
+  return { ok: true, target_price: target, stop_loss: stop };
 }
 
 async function processExits(db, accountId, quotes) {
@@ -202,11 +333,11 @@ async function processExits(db, accountId, quotes) {
   }
 }
 
-async function snapshot(db, accountId, chain) {
+async function snapshot(db, accountId, chain, accountQuotes) {
   const { results: orders } = await db.prepare(
     'SELECT * FROM orders WHERE account_id = ? ORDER BY created_at DESC',
   ).bind(accountId).all();
-  const quoteMap = new Map(chain.quotes.map((quote) => [quote.symbol, quote]));
+  const quoteMap = new Map(accountQuotes.map((quote) => [quote.symbol, quote]));
   let cash = INITIAL_BALANCE;
   let realized = 0;
   let unrealized = 0;
@@ -239,6 +370,7 @@ async function snapshot(db, accountId, chain) {
   }
   return {
     ...chain,
+    quotes: accountQuotes,
     portfolio: {
       cash_balance: cash,
       equity: INITIAL_BALANCE + realized + unrealized,

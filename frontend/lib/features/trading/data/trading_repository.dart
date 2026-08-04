@@ -18,6 +18,22 @@ class TradingRepository {
     return TradingSnapshot.fromJson(response.data!);
   }
 
+  Future<List<Quote>> search(String query) async {
+    final response = await _dio.get<List<dynamic>>(
+      '/market/search',
+      queryParameters: {'q': query},
+    );
+    return response.data!
+        .map((item) => Quote.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> addToWatchlist(String symbol) =>
+      _dio.post<void>('/watchlist', data: {'symbol': symbol});
+
+  Future<void> removeFromWatchlist(String symbol) =>
+      _dio.delete<void>('/watchlist/${Uri.encodeComponent(symbol)}');
+
   Future<void> placeOrder({
     required String symbol,
     required OrderSide side,
@@ -38,4 +54,13 @@ class TradingRepository {
   }
 
   Future<void> reset() => _dio.post<void>('/trading/reset');
+
+  Future<void> updateRisk({
+    required String orderId,
+    double? targetPrice,
+    double? stopLoss,
+  }) => _dio.patch<void>(
+    '/trading/orders/$orderId',
+    data: {'target_price': targetPrice, 'stop_loss': stopLoss},
+  );
 }

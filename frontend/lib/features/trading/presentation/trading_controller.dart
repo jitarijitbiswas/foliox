@@ -19,6 +19,8 @@ class TradingState {
     this.error,
     this.message,
     this.query = '',
+    this.searchResults = const [],
+    this.isSearching = false,
   });
 
   final TradingSnapshot? snapshot;
@@ -27,6 +29,8 @@ class TradingState {
   final String? error;
   final String? message;
   final String query;
+  final List<Quote> searchResults;
+  final bool isSearching;
 
   List<Quote> get visibleQuotes {
     final all = snapshot?.quotes ?? const <Quote>[];
@@ -49,6 +53,8 @@ class TradingState {
     String? message,
     String? query,
     bool clearFeedback = false,
+    List<Quote>? searchResults,
+    bool? isSearching,
   }) => TradingState(
     snapshot: snapshot ?? this.snapshot,
     isLoading: isLoading ?? this.isLoading,
@@ -56,6 +62,8 @@ class TradingState {
     error: clearFeedback ? null : error ?? this.error,
     message: clearFeedback ? null : message ?? this.message,
     query: query ?? this.query,
+    searchResults: searchResults ?? this.searchResults,
+    isSearching: isSearching ?? this.isSearching,
   );
 }
 
@@ -73,6 +81,7 @@ class TradingController extends StateNotifier<TradingState> {
 
   final TradingRepository _repository;
   Timer? _timer;
+  Timer? _searchDebounce;
   bool _refreshing = false;
 
   Future<void> refresh({bool silent = false}) async {
@@ -89,7 +98,60 @@ class TradingController extends StateNotifier<TradingState> {
     }
   }
 
-  void search(String value) => state = state.copyWith(query: value);
+  void search(String value) {
+    state = state.copyWith(
+      query: value,
+      searchResults: value.trim().length < 2 ? const [] : null,
+    );
+    _searchDebounce?.cancel();
+    if (value.trim().length < 2) return;
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () async {
+      state = state.copyWith(isSearching: true, clearFeedback: true);
+      try {
+        final results = await _repository.search(value);
+        state = state.copyWith(searchResults: results, isSearching: false);
+      } catch (error) {
+        state = state.copyWith(isSearching: false, error: _messageFor(error));
+      }
+    });
+  }
+
+  Future<void> addToWatchlist(Quote quote) async {
+    await _repository.addToWatchlist(quote.symbol);
+    state = state.copyWith(query: '', searchResults: const []);
+    await refresh(silent: true);
+    state = state.copyWith(message: '${quote.symbol} added to watchlist');
+  }
+
+  Future<void> removeFromWatchlist(String symbol) async {
+    await _repository.removeFromWatchlist(symbol);
+    await refresh(silent: true);
+    state = state.copyWith(message: '$symbol removed from watchlist');
+  }
+
+  Future<bool> updateRisk(
+    String orderId, {
+    double? targetPrice,
+    double? stopLoss,
+  }) async {
+    state = state.copyWith(isSubmitting: true, clearFeedback: true);
+    try {
+      await _repository.updateRisk(
+        orderId: orderId,
+        targetPrice: targetPrice,
+        stopLoss: stopLoss,
+      );
+      await refresh(silent: true);
+      state = state.copyWith(
+        isSubmitting: false,
+        message: 'Target and stop-loss updated',
+      );
+      return true;
+    } catch (error) {
+      state = state.copyWith(isSubmitting: false, error: _messageFor(error));
+      return false;
+    }
+  }
 
   Future<bool> placeOrder(
     Quote quote,
@@ -141,6 +203,7 @@ class TradingController extends StateNotifier<TradingState> {
   @override
   void dispose() {
     _timer?.cancel();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 }
