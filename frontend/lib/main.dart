@@ -7,5 +7,6 @@ import 'app/app.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
+  await Hive.openBox<String>('foliox_settings');
   runApp(const ProviderScope(child: PaperTradingApp()));
 }

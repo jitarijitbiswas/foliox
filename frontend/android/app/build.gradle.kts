@@ -19,7 +19,8 @@ android {
         applicationId = "com.papertrading.nse_paper_trading"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Samsung J7 Max ships with Android 7.0 (API 24).
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
