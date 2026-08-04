@@ -12,18 +12,18 @@ async def test_buy_then_partial_sell_updates_position_and_cash() -> None:
     service = DemoTradingService(seed=1)
 
     buy = await service.place_order(
-        PlaceOrderRequest(symbol="NIFTY24AUG24700CE", side=Side.BUY, quantity=150)
+        PlaceOrderRequest(symbol="NIFTY11AUG2625000CE", side=Side.BUY, quantity=130)
     )
     after_buy = await service.portfolio()
     sell = await service.place_order(
-        PlaceOrderRequest(symbol="NIFTY24AUG24700CE", side=Side.SELL, quantity=75)
+        PlaceOrderRequest(symbol="NIFTY11AUG2625000CE", side=Side.SELL, quantity=65)
     )
     after_sell = await service.portfolio()
 
     assert buy.status == "FILLED"
     assert sell.status == "FILLED"
-    assert after_buy.positions[0].quantity == 150
-    assert after_sell.positions[0].quantity == 75
+    assert after_buy.positions[0].quantity == 130
+    assert after_sell.positions[0].quantity == 65
     assert after_buy.cash_balance < DemoTradingService.initial_balance
     assert after_sell.cash_balance > after_buy.cash_balance
 
@@ -50,7 +50,7 @@ async def test_rejects_invalid_lot_quantity() -> None:
 
     with pytest.raises(HTTPException) as error:
         await service.place_order(
-            PlaceOrderRequest(symbol="NIFTY24AUG24700CE", side=Side.BUY, quantity=1)
+            PlaceOrderRequest(symbol="NIFTY11AUG2625000CE", side=Side.BUY, quantity=1)
         )
 
     assert error.value.status_code == 422

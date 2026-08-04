@@ -62,15 +62,41 @@ class DemoTradingService:
     @staticmethod
     def _create_instruments() -> dict[str, Instrument]:
         rows = [
-            ("NIFTY", "Nifty 50", "INDEX", 1, "0.05", "24700.00"),
+            ("NIFTY", "Nifty 50", "INDEX", 1, "0.10", "25000.00"),
             ("BANKNIFTY", "Nifty Bank", "INDEX", 1, "0.05", "53500.00"),
-            ("NIFTY24AUG24700CE", "NIFTY 24 AUG 24700 CE", "OPTION", 75, "0.05", "215.00"),
-            ("NIFTY24AUG24700PE", "NIFTY 24 AUG 24700 PE", "OPTION", 75, "0.05", "198.00"),
             ("BANKNIFTY24AUG53500CE", "BANKNIFTY 24 AUG 53500 CE", "OPTION", 30, "0.05", "440.00"),
             ("BANKNIFTY24AUG53500PE", "BANKNIFTY 24 AUG 53500 PE", "OPTION", 30, "0.05", "425.00"),
             ("RELIANCE", "Reliance Industries", "EQUITY", 1, "0.05", "2987.65"),
             ("TCS", "Tata Consultancy Services", "EQUITY", 1, "0.05", "4218.20"),
         ]
+        # Simulated NIFTY weekly option chain for the next Tuesday expiry.
+        # The 65-unit lot reflects NSE/FAOP/70616 for 2026 contracts.
+        spot = Decimal("25000")
+        for strike in range(24500, 25501, 100):
+            intrinsic_call = max(spot - strike, Decimal("0"))
+            intrinsic_put = max(Decimal(str(strike)) - spot, Decimal("0"))
+            distance = abs(Decimal(str(strike)) - spot)
+            time_value = max(Decimal("42"), Decimal("180") - distance * Decimal("0.22"))
+            rows.extend(
+                [
+                    (
+                        f"NIFTY11AUG26{strike}CE",
+                        f"NIFTY 11 AUG {strike} CE",
+                        "OPTION",
+                        65,
+                        "0.05",
+                        str(intrinsic_call + time_value),
+                    ),
+                    (
+                        f"NIFTY11AUG26{strike}PE",
+                        f"NIFTY 11 AUG {strike} PE",
+                        "OPTION",
+                        65,
+                        "0.05",
+                        str(intrinsic_put + time_value),
+                    ),
+                ]
+            )
         return {
             symbol: Instrument(
                 symbol, name, kind, lot, Decimal(tick), Decimal(price), Decimal(price)

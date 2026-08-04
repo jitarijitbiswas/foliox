@@ -65,9 +65,19 @@ class DashboardScreen extends ConsumerWidget {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     sliver: SliverToBoxAdapter(
-                      child: Text(
-                        'Market watch',
-                        style: Theme.of(context).textTheme.titleLarge,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'NIFTY option chain',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '11 Aug 2026 expiry · 24,500–25,500 strikes · NSE lot size 65',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
                       ),
                     ),
                   ),

@@ -17,7 +17,7 @@ def test_demo_snapshot_and_market_order() -> None:
     snapshot = client.get("/api/v1/demo/snapshot")
     order = client.post(
         "/api/v1/demo/orders",
-        json={"symbol": "NIFTY24AUG24700CE", "side": "BUY", "quantity": 75},
+        json={"symbol": "NIFTY11AUG2625000CE", "side": "BUY", "quantity": 65},
     )
     portfolio = client.get("/api/v1/demo/portfolio")
 
