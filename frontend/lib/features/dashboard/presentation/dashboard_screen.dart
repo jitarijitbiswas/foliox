@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/presentation/auth_controller.dart';
 import '../../trading/domain/trading_models.dart';
 import '../../trading/presentation/trading_controller.dart';
 
@@ -13,6 +14,7 @@ class DashboardScreen extends ConsumerWidget {
     final pagePadding = isMobile ? 10.0 : 16.0;
     final state = ref.watch(tradingControllerProvider);
     final controller = ref.read(tradingControllerProvider.notifier);
+    final auth = ref.watch(authControllerProvider);
     final portfolio = state.snapshot?.portfolio;
 
     ref.listen(tradingControllerProvider, (previous, next) {
@@ -30,6 +32,11 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(isMobile ? 'PaperTrade' : 'PaperTrade Demo'),
         actions: [
+          if (!isMobile)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Center(child: Text(auth.user?.name ?? '')),
+            ),
           const Chip(
             avatar: Icon(Icons.wifi_tethering, size: 16),
             label: Text('NSE LIVE'),
@@ -38,6 +45,37 @@ class DashboardScreen extends ConsumerWidget {
             tooltip: 'Reset demo account',
             onPressed: state.isSubmitting ? null : controller.reset,
             icon: const Icon(Icons.restart_alt),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Account',
+            icon: CircleAvatar(
+              radius: 15,
+              backgroundImage: (auth.user?.picture.isNotEmpty ?? false)
+                  ? NetworkImage(auth.user!.picture)
+                  : null,
+              child: (auth.user?.picture.isEmpty ?? true)
+                  ? const Icon(Icons.person, size: 18)
+                  : null,
+            ),
+            onSelected: (value) {
+              if (value == 'logout') {
+                ref.read(authControllerProvider.notifier).logout();
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Text(auth.user?.email ?? ''),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.logout),
+                  title: Text('Sign out'),
+                ),
+              ),
+            ],
           ),
           SizedBox(width: isMobile ? 0 : 8),
         ],

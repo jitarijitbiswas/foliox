@@ -4,19 +4,29 @@ const LOT_SIZE = 65;
 const LIVE_CACHE_MS = 900;
 let niftyCache;
 const equityCache = new Map();
+let googleKeysCache;
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
 
-    const account = getAccount(request);
     const headers = {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
-      'set-cookie': `foliox_account=${account.id}; Path=/; Max-Age=31536000; SameSite=Lax; Secure`,
     };
     try {
+      if (request.method === 'POST' && url.pathname === '/api/v1/auth/google') {
+        return json(await googleLogin(request, env), 200, headers);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/v1/auth/logout') {
+        await logout(request, env.DB);
+        return json({ ok: true }, 200, headers);
+      }
+      const account = await requireAccount(request, env.DB);
+      if (request.method === 'GET' && url.pathname === '/api/v1/auth/me') {
+        return json({ user: account }, 200, headers);
+      }
       if (request.method === 'GET' && url.pathname === '/api/v1/market/nifty') {
         return json(await loadNiftyChain(), 200, headers);
       }
@@ -77,7 +87,7 @@ export default {
       return json({ detail: 'Route not found' }, 404, headers);
     } catch (error) {
       console.error(error);
-      return json({ detail: error.message || 'Request failed' }, 502, headers);
+      return json({ detail: error.message || 'Request failed' }, error.status || 502, headers);
     }
   },
   async scheduled(_event, env, ctx) {
@@ -99,9 +109,124 @@ async function monitorOpenOrders(db) {
   }
 }
 
-function getAccount(request) {
-  const match = request.headers.get('cookie')?.match(/(?:^|;\s*)foliox_account=([^;]+)/);
-  return { id: match?.[1] || crypto.randomUUID() };
+async function requireAccount(request, db) {
+  const authorization = request.headers.get('authorization') || '';
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  if (!token) throw new HttpError(401, 'Authentication required');
+  const tokenHash = await sha256(token);
+  const now = new Date().toISOString();
+  const account = await db.prepare(`SELECT a.id, a.email, a.name, a.picture
+    FROM sessions s JOIN accounts a ON a.id=s.account_id
+    WHERE s.token_hash=? AND s.expires_at>?`).bind(tokenHash, now).first();
+  if (!account) throw new HttpError(401, 'Session expired. Sign in again.');
+  await db.prepare('UPDATE sessions SET last_used_at=? WHERE token_hash=?')
+    .bind(now, tokenHash).run();
+  return account;
+}
+
+async function googleLogin(request, env) {
+  const body = await request.json();
+  if (!body.id_token) throw new HttpError(400, 'Google ID token is required');
+  const claims = await verifyGoogleIdToken(body.id_token, env.GOOGLE_CLIENT_IDS || '');
+  if (!claims.email || claims.email_verified !== true) {
+    throw new HttpError(401, 'A verified Google email is required');
+  }
+  const now = new Date().toISOString();
+  const id = `google:${claims.sub}`;
+  await env.DB.prepare(`INSERT INTO accounts(id, google_sub, email, name, picture, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(google_sub) DO UPDATE SET email=excluded.email, name=excluded.name,
+      picture=excluded.picture, updated_at=excluded.updated_at`)
+    .bind(id, claims.sub, claims.email, claims.name || claims.email,
+      claims.picture || '', now, now).run();
+  const sessionToken = randomToken();
+  const tokenHash = await sha256(sessionToken);
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM sessions WHERE expires_at<=?').bind(now),
+    env.DB.prepare(`INSERT INTO sessions(token_hash, account_id, expires_at, created_at, last_used_at)
+      VALUES (?, ?, ?, ?, ?)`).bind(tokenHash, id, expiresAt, now, now),
+  ]);
+  return {
+    token: sessionToken,
+    expires_at: expiresAt,
+    user: { id, email: claims.email, name: claims.name || claims.email, picture: claims.picture || '' },
+  };
+}
+
+async function logout(request, db) {
+  const authorization = request.headers.get('authorization') || '';
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  if (token) await db.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(token)).run();
+}
+
+async function verifyGoogleIdToken(token, configuredClientIds) {
+  const clientIds = configuredClientIds.split(',').map((value) => value.trim()).filter(Boolean);
+  if (!clientIds.length) throw new HttpError(503, 'Google authentication is not configured');
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new HttpError(401, 'Invalid Google token');
+  const header = JSON.parse(decodeBase64Url(parts[0]));
+  const claims = JSON.parse(decodeBase64Url(parts[1]));
+  if (header.alg !== 'RS256' || !header.kid) throw new HttpError(401, 'Unsupported Google token');
+  let keys = await googlePublicKeys();
+  let jwk = keys.find((key) => key.kid === header.kid);
+  if (!jwk) {
+    googleKeysCache = null;
+    keys = await googlePublicKeys();
+    jwk = keys.find((key) => key.kid === header.kid);
+  }
+  if (!jwk) throw new HttpError(401, 'Unknown Google signing key');
+  return verifyGoogleSignature(parts, claims, jwk, clientIds);
+}
+
+async function verifyGoogleSignature(parts, claims, jwk, clientIds) {
+  const key = await crypto.subtle.importKey('jwk', jwk,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key,
+    base64UrlBytes(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+  const now = Math.floor(Date.now() / 1000);
+  if (!valid || !['accounts.google.com', 'https://accounts.google.com'].includes(claims.iss) ||
+      !clientIds.includes(claims.aud) || Number(claims.exp) <= now || Number(claims.iat) > now + 60) {
+    throw new HttpError(401, 'Google token verification failed');
+  }
+  return claims;
+}
+
+async function googlePublicKeys() {
+  if (googleKeysCache?.expiresAt > Date.now()) return googleKeysCache.keys;
+  const response = await fetch('https://www.googleapis.com/oauth2/v3/certs');
+  if (!response.ok) throw new HttpError(502, 'Unable to load Google signing keys');
+  const payload = await response.json();
+  const maxAge = Number(response.headers.get('cache-control')?.match(/max-age=(\d+)/)?.[1] || 3600);
+  googleKeysCache = { keys: payload.keys, expiresAt: Date.now() + maxAge * 1000 };
+  return googleKeysCache.keys;
+}
+
+function decodeBase64Url(value) {
+  return new TextDecoder().decode(base64UrlBytes(value));
+}
+
+function base64UrlBytes(value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function randomToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
 }
 
 function json(value, status, headers = {}) {

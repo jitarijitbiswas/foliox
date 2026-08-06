@@ -1,3 +1,26 @@
+CREATE TABLE IF NOT EXISTS accounts (
+  id TEXT PRIMARY KEY,
+  google_sub TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL,
+  picture TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL,
+  FOREIGN KEY(account_id) REFERENCES accounts(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id, expires_at);
+
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY,
   account_id TEXT NOT NULL,

@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,11 +14,22 @@ class ApiClient {
               baseUrl: _baseUrl,
               connectTimeout: const Duration(seconds: 10),
               receiveTimeout: const Duration(seconds: 15),
-              headers: kIsWeb
-                  ? null
-                  : {'cookie': 'foliox_account=${_accountId}'},
             ),
-          );
+          ) {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final token = Hive.box<String>(
+            'foliox_settings',
+          ).get('session_token');
+          if (token != null && token.isNotEmpty) {
+            options.headers['authorization'] = 'Bearer $token';
+          }
+          handler.next(options);
+        },
+      ),
+    );
+  }
 
   final Dio _dio;
 
@@ -30,16 +39,6 @@ class ApiClient {
     return kIsWeb
         ? '${Uri.base.origin}/api/v1'
         : 'https://foliox.foliox.workers.dev/api/v1';
-  }
-
-  static String get _accountId {
-    final box = Hive.box<String>('foliox_settings');
-    final saved = box.get('account_id');
-    if (saved != null && saved.isNotEmpty) return saved;
-    final generated =
-        'android-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${Random.secure().nextInt(1 << 32).toRadixString(36)}';
-    box.put('account_id', generated);
-    return generated;
   }
 
   Dio get dio => _dio;

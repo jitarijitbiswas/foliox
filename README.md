@@ -16,6 +16,29 @@ Read the [target architecture](docs/architecture.md) before contributing.
 The app simulates trading only. It does not route orders to a broker or exchange.
 Live data requires a licensed provider adapter, intentionally marked as a TODO.
 
+## Google authentication
+
+Foliox uses Google ID tokens only for initial identity verification. The Cloudflare
+Worker validates Google's signature, issuer, audience and expiry, then creates a
+revocable 30-day Foliox session. All orders, positions, watchlists and trade history
+are scoped to the authenticated account.
+
+Create a Web OAuth client in Google Cloud and add
+`https://foliox.foliox.workers.dev` as an authorized JavaScript origin. Create an
+Android OAuth client for package `com.papertrading.nse_paper_trading` with SHA-1
+`E3:3D:E2:CA:29:36:95:8D:61:F3:B0:D5:B4:1C:BB:98:20:B4:CB:79`.
+
+Configure and build with the same Web client ID:
+
+```powershell
+npx wrangler secret put GOOGLE_CLIENT_IDS
+cd frontend
+flutter build web --release --dart-define=GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
+flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
+```
+
+Apply `cloudflare/schema.sql` to D1 before deploying the authenticated Worker.
+
 ## Test the buy/sell demo
 
 Start the API:
