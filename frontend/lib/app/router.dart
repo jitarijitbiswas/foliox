@@ -19,6 +19,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         Hive.box<String>('foliox_settings').containsKey('active_account_id')
         ? '/home'
         : '/onboarding',
+    redirect: (context, state) {
+      final hasLocalAccount = Hive.box<String>(
+        'foliox_settings',
+      ).containsKey('active_account_id');
+      final publicRoute =
+          state.matchedLocation == '/onboarding' ||
+          state.matchedLocation == '/auth' ||
+          state.matchedLocation == '/forgot-password';
+
+      // A hash/deep link must never bypass local authentication. Market data
+      // remains public, but the paper account and its portfolio are private
+      // to the profile saved on this browser/device.
+      if (!hasLocalAccount && !publicRoute) return '/auth';
+      if (hasLocalAccount && publicRoute) return '/home';
+      return null;
+    },
     routes: [
       GoRoute(
         path: '/onboarding',
@@ -90,9 +106,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
       ),
-      GoRoute(path: '/journal', builder: (context, state) => const JournalScreen()),
+      GoRoute(
+        path: '/journal',
+        builder: (context, state) => const JournalScreen(),
+      ),
       GoRoute(path: '/risk', builder: (context, state) => const RiskScreen()),
-      GoRoute(path: '/strategies', builder: (context, state) => const StrategiesScreen()),
+      GoRoute(
+        path: '/strategies',
+        builder: (context, state) => const StrategiesScreen(),
+      ),
     ],
   );
 });
