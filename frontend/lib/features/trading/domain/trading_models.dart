@@ -83,7 +83,7 @@ class Position {
 
   factory Position.fromJson(Map<String, dynamic> json) => Position(
     symbol: json['symbol'] as String,
-    quantity: json['quantity'] as int,
+    quantity: _number(json['quantity']),
     averagePrice: _number(json['average_price']),
     ltp: _number(json['ltp']),
     realizedPnl: _number(json['realized_pnl']),
@@ -97,7 +97,7 @@ class Position {
   );
 
   final String symbol;
-  final int quantity;
+  final double quantity;
   final double averagePrice;
   final double ltp;
   final double realizedPnl;
@@ -183,6 +183,8 @@ class TradeOrder {
     required this.status,
     required this.pnl,
     required this.createdAt,
+    this.leverage = 1,
+    this.closedAt,
     this.exitPrice,
     this.exitReason,
     this.targetPrice,
@@ -193,7 +195,7 @@ class TradeOrder {
     id: json['id'].toString(),
     symbol: json['symbol'].toString(),
     side: json['side'].toString(),
-    quantity: json['quantity'] as int,
+    quantity: _number(json['quantity']),
     entryPrice: _number(json['entry_price']),
     exitPrice: _nullableNumber(json['exit_price']),
     targetPrice: _nullableNumber(json['target_price']),
@@ -201,13 +203,18 @@ class TradeOrder {
     status: json['status'].toString(),
     exitReason: json['exit_reason']?.toString(),
     pnl: _number(json['pnl'] ?? 0),
+    leverage: int.tryParse(json['leverage']?.toString() ?? '') ?? 1,
     createdAt: DateTime.parse(json['created_at'].toString()),
+    closedAt: json['closed_at'] == null
+        ? null
+        : DateTime.tryParse(json['closed_at'].toString()),
   );
 
   final String id;
   final String symbol;
   final String side;
-  final int quantity;
+  final double quantity;
+  final int leverage;
   final double entryPrice;
   final double? exitPrice;
   final double? targetPrice;
@@ -216,6 +223,7 @@ class TradeOrder {
   final String? exitReason;
   final double pnl;
   final DateTime createdAt;
+  final DateTime? closedAt;
 }
 
 class PendingOrder {
@@ -228,23 +236,26 @@ class PendingOrder {
     required this.orderPrice,
     required this.status,
     required this.createdAt,
+    this.leverage = 1,
   });
 
   factory PendingOrder.fromJson(Map<String, dynamic> json) => PendingOrder(
     id: json['id'].toString(),
     symbol: json['symbol'].toString(),
     side: json['side'].toString(),
-    quantity: json['quantity'] as int,
+    quantity: _number(json['quantity']),
     orderType: json['order_type'].toString(),
     orderPrice: _number(json['order_price']),
     status: json['status'].toString(),
     createdAt: DateTime.parse(json['created_at'].toString()),
+    leverage: int.tryParse(json['leverage']?.toString() ?? '') ?? 1,
   );
 
   final String id;
   final String symbol;
   final String side;
-  final int quantity;
+  final double quantity;
+  final int leverage;
   final String orderType;
   final double orderPrice;
   final String status;

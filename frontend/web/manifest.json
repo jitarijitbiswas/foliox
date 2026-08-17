@@ -1,6 +1,6 @@
 {
-    "name": "nse_paper_trading",
-    "short_name": "nse_paper_trading",
+    "name": "Foliox Paper Trading",
+    "short_name": "Foliox",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

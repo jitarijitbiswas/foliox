@@ -1,16 +1,9 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nse_paper_trading/app/app.dart';
+import 'package:nse_paper_trading/app/theme.dart';
 
 void main() {
-  testWidgets('renders the authentication gate', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: PaperTradingApp()));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Welcome to Foliox'), findsOneWidget);
-    expect(
-      find.text('Google authentication setup is pending.'),
-      findsOneWidget,
-    );
+  test('uses the professional dark trading theme', () {
+    expect(AppTheme.dark.brightness.name, 'dark');
+    expect(AppTheme.dark.scaffoldBackgroundColor.toARGB32(), 0xFF070B12);
   });
 }

@@ -55,13 +55,14 @@ class TradingState {
     String? message,
     String? query,
     bool clearFeedback = false,
+    bool clearError = false,
     List<Quote>? searchResults,
     bool? isSearching,
   }) => TradingState(
     snapshot: snapshot ?? this.snapshot,
     isLoading: isLoading ?? this.isLoading,
     isSubmitting: isSubmitting ?? this.isSubmitting,
-    error: clearFeedback ? null : error ?? this.error,
+    error: clearFeedback || clearError ? null : error ?? this.error,
     message: clearFeedback ? null : message ?? this.message,
     query: query ?? this.query,
     searchResults: searchResults ?? this.searchResults,
@@ -101,7 +102,11 @@ class TradingController extends StateNotifier<TradingState> {
     if (!silent) state = state.copyWith(isLoading: true, clearFeedback: true);
     try {
       final snapshot = _mergeFreshStreamPrices(await _repository.snapshot());
-      state = state.copyWith(snapshot: snapshot, isLoading: false);
+      state = state.copyWith(
+        snapshot: snapshot,
+        isLoading: false,
+        clearError: true,
+      );
       _connectNiftyStream(snapshot.expiry);
     } catch (error) {
       state = state.copyWith(isLoading: false, error: _messageFor(error));
@@ -361,11 +366,12 @@ class TradingController extends StateNotifier<TradingState> {
   Future<bool> placeOrder(
     Quote quote,
     OrderSide side,
-    int lots, {
+    double lots, {
     EntryOrderType orderType = EntryOrderType.market,
     double? orderPrice,
     double? targetPrice,
     double? stopLoss,
+    int leverage = 1,
   }) async {
     state = state.copyWith(isSubmitting: true, clearFeedback: true);
     try {
@@ -377,13 +383,14 @@ class TradingController extends StateNotifier<TradingState> {
         orderPrice: orderPrice,
         targetPrice: targetPrice,
         stopLoss: stopLoss,
+        leverage: leverage,
       );
       final snapshot = await _repository.snapshot();
       state = state.copyWith(
         snapshot: snapshot,
         isSubmitting: false,
         message: orderType == EntryOrderType.market
-            ? '${side == OrderSide.buy ? 'Bought' : 'Sold'} $lots lot(s) of ${quote.symbol}'
+            ? '${side == OrderSide.buy ? 'Bought' : 'Sold'} ${_lotsLabel(lots)} lot(s) of ${quote.symbol}'
             : '${orderType == EntryOrderType.limit ? 'Limit' : 'Stop-loss'} order placed for ${quote.symbol}',
       );
       return true;
@@ -392,6 +399,10 @@ class TradingController extends StateNotifier<TradingState> {
       return false;
     }
   }
+
+  String _lotsLabel(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(3).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
 
   Future<void> reset() async {
     await _repository.reset();

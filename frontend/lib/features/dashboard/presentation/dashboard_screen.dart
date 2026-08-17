@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
-import '../../auth/presentation/auth_controller.dart';
 import '../../trading/domain/trading_models.dart';
 import '../../trading/presentation/trading_controller.dart';
 
@@ -14,8 +15,10 @@ class DashboardScreen extends ConsumerWidget {
     final pagePadding = isMobile ? 10.0 : 16.0;
     final state = ref.watch(tradingControllerProvider);
     final controller = ref.read(tradingControllerProvider.notifier);
-    final auth = ref.watch(authControllerProvider);
     final portfolio = state.snapshot?.portfolio;
+    final profileName = Hive.box<String>('foliox_settings')
+        .get('local_account_name', defaultValue: 'Trader')!
+        .trim();
 
     ref.listen(tradingControllerProvider, (previous, next) {
       final text = next.error ?? next.message;
@@ -29,55 +32,49 @@ class DashboardScreen extends ConsumerWidget {
     });
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isMobile ? 'PaperTrade' : 'PaperTrade Demo'),
-        actions: [
-          if (!isMobile)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Center(child: Text(auth.user?.name ?? '')),
-            ),
-          const Chip(
-            avatar: Icon(Icons.wifi_tethering, size: 16),
-            label: Text('NSE LIVE'),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/trade'),
+        icon: const Icon(Icons.add),
+        label: const Text('Trade'),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 0,
+        onDestinationSelected: (index) {
+          const routes = [
+            '/home',
+            '/portfolio',
+            '/trade',
+            '/positions',
+            '/profile',
+          ];
+          if (index != 0) context.push(routes[index]);
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
           ),
-          IconButton(
-            tooltip: 'Reset demo account',
-            onPressed: state.isSubmitting ? null : controller.reset,
-            icon: const Icon(Icons.restart_alt),
+          NavigationDestination(
+            icon: Icon(Icons.pie_chart_outline),
+            selectedIcon: Icon(Icons.pie_chart),
+            label: 'Portfolio',
           ),
-          PopupMenuButton<String>(
-            tooltip: 'Account',
-            icon: CircleAvatar(
-              radius: 15,
-              backgroundImage: (auth.user?.picture.isNotEmpty ?? false)
-                  ? NetworkImage(auth.user!.picture)
-                  : null,
-              child: (auth.user?.picture.isEmpty ?? true)
-                  ? const Icon(Icons.person, size: 18)
-                  : null,
-            ),
-            onSelected: (value) {
-              if (value == 'logout') {
-                ref.read(authControllerProvider.notifier).logout();
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text(auth.user?.email ?? ''),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.logout),
-                  title: Text('Sign out'),
-                ),
-              ),
-            ],
+          NavigationDestination(
+            icon: Icon(Icons.candlestick_chart_outlined),
+            selectedIcon: Icon(Icons.candlestick_chart),
+            label: 'Trade',
           ),
-          SizedBox(width: isMobile ? 0 : 8),
+          NavigationDestination(
+            icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: Icon(Icons.account_balance_wallet),
+            label: 'Positions',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
         ],
       ),
       body: state.isLoading && state.snapshot == null
@@ -87,10 +84,52 @@ class DashboardScreen extends ConsumerWidget {
               child: CustomScrollView(
                 slivers: [
                   SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      18,
+                      pagePadding,
+                      12,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: _DashboardHeader(
+                        name: profileName.isEmpty ? 'Trader' : profileName,
+                        onProfile: () => context.push('/profile'),
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: EdgeInsets.symmetric(horizontal: pagePadding),
+                    sliver: SliverToBoxAdapter(
+                      child: _Metrics(portfolio: portfolio),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      14,
+                      pagePadding,
+                      16,
+                    ),
+                    sliver: SliverToBoxAdapter(child: _QuickActions()),
+                  ),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      pagePadding,
+                      0,
+                      pagePadding,
+                      16,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: _PerformanceSnapshot(
+                        totalPnl: portfolio?.totalPnl ?? 0,
+                      ),
+                    ),
+                  ),
+                  SliverPadding(
                     padding: EdgeInsets.all(pagePadding),
                     sliver: SliverToBoxAdapter(
                       child: SearchBar(
-                        hintText: 'Search NIFTY, BANKNIFTY, options or stocks',
+                        hintText: 'Search stocks, options, BTCUSD or XAUUSD',
                         leading: const Icon(Icons.search),
                         onChanged: controller.search,
                       ),
@@ -115,17 +154,6 @@ class DashboardScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      pagePadding,
-                      0,
-                      pagePadding,
-                      16,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: _Metrics(portfolio: portfolio),
-                    ),
-                  ),
                   SliverPadding(
                     padding: EdgeInsets.fromLTRB(
                       pagePadding,
@@ -176,7 +204,7 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'NIFTY ${_money(state.snapshot?.underlying ?? 0)} · NSE ${state.snapshot?.timestamp ?? '—'} · Checked ${_clock(state.snapshot?.refreshedAt)}',
+                            'NIFTY ${_money(state.snapshot?.underlying ?? 0)} · Live quotes · Updated ${_clock(state.snapshot?.refreshedAt)}',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -324,7 +352,7 @@ class DashboardScreen extends ConsumerWidget {
                           labelText: orderType == EntryOrderType.limit
                               ? 'Limit price'
                               : 'Trigger price',
-                          prefixText: '₹ ',
+                          prefixText: '${_currencyPrefix(quote.symbol)} ',
                         ),
                         onChanged: (value) => orderPrice = value,
                       ),
@@ -351,18 +379,18 @@ class DashboardScreen extends ConsumerWidget {
                       'Quantity: ${lots * quote.lotSize} · Lot size: ${quote.lotSize}',
                     ),
                     const SizedBox(height: 8),
-                    Text('Estimated fill: ${_money(price)}'),
+                    Text('Estimated fill: ${_money(price, quote.symbol)}'),
                     Text(
-                      'Estimated value: ${_money(price * lots * quote.lotSize)}',
+                      'Estimated value: ${_money(price * lots * quote.lotSize, quote.symbol)}',
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Target price (optional)',
-                        prefixText: '₹ ',
+                        prefixText: '${_currencyPrefix(quote.symbol)} ',
                       ),
                       onChanged: (value) => target = value,
                     ),
@@ -371,9 +399,9 @@ class DashboardScreen extends ConsumerWidget {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Stop-loss price (optional)',
-                        prefixText: '₹ ',
+                        prefixText: '${_currencyPrefix(quote.symbol)} ',
                       ),
                       onChanged: (value) => stopLoss = value,
                     ),
@@ -398,7 +426,7 @@ class DashboardScreen extends ConsumerWidget {
                       .placeOrder(
                         quote,
                         side,
-                        lots,
+                        lots.toDouble(),
                         orderType: orderType,
                         orderPrice: double.tryParse(orderPrice),
                         targetPrice: double.tryParse(target),
@@ -435,16 +463,18 @@ class DashboardScreen extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Entry ${_money(position.averagePrice)} · ${position.side}'),
+              Text(
+                'Entry ${_money(position.averagePrice, position.symbol)} · ${position.side}',
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 initialValue: target,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Target price',
-                  prefixText: '₹ ',
+                  prefixText: '${_currencyPrefix(position.symbol)} ',
                 ),
                 onChanged: (value) => target = value,
               ),
@@ -454,9 +484,9 @@ class DashboardScreen extends ConsumerWidget {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Stop-loss price',
-                  prefixText: '₹ ',
+                  prefixText: '${_currencyPrefix(position.symbol)} ',
                 ),
                 onChanged: (value) => stopLoss = value,
               ),
@@ -500,7 +530,7 @@ class DashboardScreen extends ConsumerWidget {
         content: Text(
           'The ${position.side} position will close at the current live '
           '${position.side == 'BUY' ? 'bid' : 'ask'} price. Current P&L: '
-          '${_money(position.netPnl)}.',
+          '${_money(position.netPnl, position.symbol)}.',
         ),
         actions: [
           TextButton(
@@ -522,6 +552,208 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
+class _DashboardHeader extends StatelessWidget {
+  const _DashboardHeader({required this.name, required this.onProfile});
+  final String name;
+  final VoidCallback onProfile;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Hi, $name! 👋',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Ready to conquer the markets?',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      InkWell(
+        onTap: onProfile,
+        borderRadius: BorderRadius.circular(24),
+        child: CircleAvatar(radius: 21, child: Text(name.substring(0, 1).toUpperCase())),
+      ),
+    ],
+  );
+}
+
+class _QuickActions extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    const actions = [
+      (Icons.star_outline, 'Watchlist', '/watchlist'),
+      (Icons.query_stats_outlined, 'Markets', '/markets'),
+      (Icons.account_balance_wallet_outlined, 'Positions', '/positions'),
+      (Icons.receipt_long_outlined, 'Orders', '/orders'),
+    ];
+    return Row(
+      children: actions
+          .map(
+            (action) => Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  right: action.$3 == '/orders' ? 0 : 10,
+                ),
+                child: InkWell(
+                  onTap: () => context.push(action.$3),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Ink(
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withValues(alpha: .45),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(action.$1, size: 21),
+                        const SizedBox(height: 6),
+                        Text(
+                          action.$2,
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _PerformanceSnapshot extends StatelessWidget {
+  const _PerformanceSnapshot({required this.totalPnl});
+  final double totalPnl;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _SectionTitle(
+        title: 'Your Performance',
+        action: 'View all',
+        onTap: () => context.push('/analytics'),
+      ),
+      const SizedBox(height: 8),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Portfolio P&L',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _money(totalPnl),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: totalPnl >= 0 ? Colors.greenAccent : Colors.redAccent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const SizedBox(height: 48, child: _Sparkline()),
+              const SizedBox(height: 12),
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('1D'),
+                  Text('1W'),
+                  Chip(label: Text('1M')),
+                  Text('3M'),
+                  Text('1Y'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+class _Sparkline extends StatelessWidget {
+  const _Sparkline();
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    painter: _SparklinePainter(color: Theme.of(context).colorScheme.primary),
+    child: const SizedBox.expand(),
+  );
+}
+
+class _SparklinePainter extends CustomPainter {
+  _SparklinePainter({required this.color});
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final values = [.60, .35, .48, .30, .52, .43, .71, .58, .82];
+    final path = Path();
+    for (var i = 0; i < values.length; i++) {
+      final point = Offset(
+        size.width * i / (values.length - 1),
+        size.height * (1 - values[i]),
+      );
+      i == 0
+          ? path.moveTo(point.dx, point.dy)
+          : path.lineTo(point.dx, point.dy);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklinePainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({
+    required this.title,
+    required this.action,
+    required this.onTap,
+  });
+  final String title;
+  final String action;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+      TextButton(onPressed: onTap, child: Text('$action →')),
+    ],
+  );
+}
+
 class _SearchResults extends StatelessWidget {
   const _SearchResults({required this.quotes, required this.onAdd});
   final List<Quote> quotes;
@@ -534,12 +766,15 @@ class _SearchResults extends StatelessWidget {
         const ListTile(title: Text('Search results')),
         ...quotes.map(
           (quote) => ListTile(
+            leading: CircleAvatar(
+              child: Icon(_instrumentIcon(quote.instrumentType), size: 18),
+            ),
             title: Text(quote.symbol),
-            subtitle: Text(quote.name),
-            trailing: IconButton(
-              tooltip: 'Add to watchlist',
+            subtitle: Text('${quote.name} · ${_currencyCode(quote.symbol)}'),
+            trailing: TextButton.icon(
               onPressed: () => onAdd(quote),
-              icon: const Icon(Icons.add_circle_outline),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Watch'),
             ),
           ),
         ),
@@ -612,20 +847,6 @@ class _Metrics extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Available cash',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      Text(
-                        _money(portfolio?.cashBalance ?? 0),
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
@@ -634,7 +855,6 @@ class _Metrics extends StatelessWidget {
       );
     }
     final metrics = [
-      ('Virtual cash', _money(portfolio?.cashBalance ?? 0)),
       ('Account equity', _money(portfolio?.equity ?? 0)),
       ('Current P&L', _money(currentPnl)),
       ('Total P&L', _money(totalPnl)),
@@ -739,11 +959,16 @@ class _QuoteTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            _money(quote.ltp),
+            _money(quote.ltp, quote.symbol),
             style: Theme.of(context).textTheme.titleMedium,
           ),
           Text(
             '${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toStringAsFixed(2)}%',
+            style: TextStyle(
+              color: quote.changePercent >= 0
+                  ? Colors.tealAccent
+                  : Colors.redAccent,
+            ),
           ),
         ],
       );
@@ -857,16 +1082,31 @@ class _Positions extends StatelessWidget {
                       _MobileFields(
                         fields: [
                           ('Qty', '${position.quantity}'),
-                          ('Average', _money(position.averagePrice)),
-                          ('LTP', _money(position.ltp)),
-                          ('Current P&L', _money(position.netPnl)),
-                          ('Target', _optionalMoney(position.targetPrice)),
-                          ('Stop-loss', _optionalMoney(position.stopLoss)),
+                          (
+                            'Average',
+                            _money(position.averagePrice, position.symbol),
+                          ),
+                          ('LTP', _money(position.ltp, position.symbol)),
+                          (
+                            'Current P&L',
+                            _money(position.netPnl, position.symbol),
+                          ),
+                          (
+                            'Target',
+                            _optionalMoney(
+                              position.targetPrice,
+                              position.symbol,
+                            ),
+                          ),
+                          (
+                            'Stop-loss',
+                            _optionalMoney(position.stopLoss, position.symbol),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'NSE ${position.timestamp.isEmpty ? '—' : position.timestamp} · Checked ${_clock(checkedAt)}',
+                        'Live ${position.timestamp.isEmpty ? '—' : position.timestamp} · Checked ${_clock(checkedAt)}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       Row(
@@ -923,11 +1163,19 @@ class _Positions extends StatelessWidget {
                     DataCell(Text(position.symbol)),
                     DataCell(Text(position.side)),
                     DataCell(Text('${position.quantity}')),
-                    DataCell(Text(_money(position.averagePrice))),
-                    DataCell(Text(_money(position.ltp))),
-                    DataCell(Text(_optionalMoney(position.targetPrice))),
-                    DataCell(Text(_optionalMoney(position.stopLoss))),
-                    DataCell(Text(_money(position.netPnl))),
+                    DataCell(
+                      Text(_money(position.averagePrice, position.symbol)),
+                    ),
+                    DataCell(Text(_money(position.ltp, position.symbol))),
+                    DataCell(
+                      Text(
+                        _optionalMoney(position.targetPrice, position.symbol),
+                      ),
+                    ),
+                    DataCell(
+                      Text(_optionalMoney(position.stopLoss, position.symbol)),
+                    ),
+                    DataCell(Text(_money(position.netPnl, position.symbol))),
                     DataCell(
                       Text(
                         '${position.timestamp.isEmpty ? '—' : position.timestamp}\nChecked ${_clock(checkedAt)}',
@@ -995,7 +1243,7 @@ class _PendingOrders extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: Text(
-                    '${order.side} · ${order.orderType.replaceAll('_', ' ')} · Qty ${order.quantity}\nPrice / trigger ${_money(order.orderPrice)}',
+                    '${order.side} · ${order.orderType.replaceAll('_', ' ')} · Qty ${order.quantity}\nPrice / trigger ${_money(order.orderPrice, order.symbol)}',
                   ),
                   trailing: TextButton(
                     onPressed: () => onCancel(order.id),
@@ -1028,7 +1276,7 @@ class _PendingOrders extends StatelessWidget {
                     DataCell(Text(order.side)),
                     DataCell(Text(order.orderType.replaceAll('_', ' '))),
                     DataCell(Text('${order.quantity}')),
-                    DataCell(Text(_money(order.orderPrice))),
+                    DataCell(Text(_money(order.orderPrice, order.symbol))),
                     DataCell(Text(order.status)),
                     DataCell(
                       TextButton(
@@ -1114,11 +1362,20 @@ class _TradeHistory extends StatelessWidget {
                       _MobileFields(
                         fields: [
                           ('Side / Qty', '${order.side} / ${order.quantity}'),
-                          ('Entry', _money(order.entryPrice)),
-                          ('Exit', _optionalMoney(order.exitPrice)),
-                          ('P&L', _money(order.pnl)),
-                          ('Target', _optionalMoney(order.targetPrice)),
-                          ('Stop-loss', _optionalMoney(order.stopLoss)),
+                          ('Entry', _money(order.entryPrice, order.symbol)),
+                          (
+                            'Exit',
+                            _optionalMoney(order.exitPrice, order.symbol),
+                          ),
+                          ('P&L', _money(order.pnl, order.symbol)),
+                          (
+                            'Target',
+                            _optionalMoney(order.targetPrice, order.symbol),
+                          ),
+                          (
+                            'Stop-loss',
+                            _optionalMoney(order.stopLoss, order.symbol),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -1162,12 +1419,18 @@ class _TradeHistory extends StatelessWidget {
                     DataCell(Text(order.symbol)),
                     DataCell(Text(order.side)),
                     DataCell(Text('${order.quantity}')),
-                    DataCell(Text(_money(order.entryPrice))),
-                    DataCell(Text(_optionalMoney(order.targetPrice))),
-                    DataCell(Text(_optionalMoney(order.stopLoss))),
-                    DataCell(Text(_optionalMoney(order.exitPrice))),
+                    DataCell(Text(_money(order.entryPrice, order.symbol))),
+                    DataCell(
+                      Text(_optionalMoney(order.targetPrice, order.symbol)),
+                    ),
+                    DataCell(
+                      Text(_optionalMoney(order.stopLoss, order.symbol)),
+                    ),
+                    DataCell(
+                      Text(_optionalMoney(order.exitPrice, order.symbol)),
+                    ),
                     DataCell(Text(order.exitReason ?? order.status)),
-                    DataCell(Text(_money(order.pnl))),
+                    DataCell(Text(_money(order.pnl, order.symbol))),
                   ],
                 ),
               )
@@ -1178,8 +1441,22 @@ class _TradeHistory extends StatelessWidget {
   }
 }
 
-String _money(num value) => '₹${value.toStringAsFixed(2)}';
-String _optionalMoney(num? value) => value == null ? '—' : _money(value);
+bool _usesUsd(String? symbol) =>
+    symbol?.toUpperCase() == 'BTCUSD' || symbol?.toUpperCase() == 'XAUUSD';
+
+String _currencyPrefix(String? symbol) => _usesUsd(symbol) ? r'$' : '₹';
+String _currencyCode(String? symbol) => _usesUsd(symbol) ? 'USD' : 'INR';
+String _money(num value, [String? symbol]) =>
+    '${_currencyPrefix(symbol)}${value.toStringAsFixed(2)}';
+String _optionalMoney(num? value, [String? symbol]) =>
+    value == null ? '—' : _money(value, symbol);
+IconData _instrumentIcon(String type) => switch (type) {
+  'CRYPTO' => Icons.currency_bitcoin_rounded,
+  'METAL' => Icons.workspace_premium_outlined,
+  'OPTION' => Icons.candlestick_chart_rounded,
+  'EQUITY' => Icons.business_center_outlined,
+  _ => Icons.show_chart_rounded,
+};
 String _clock(DateTime? value) {
   if (value == null) return '—';
   final local = value.toLocal();

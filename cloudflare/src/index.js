@@ -3,6 +3,8 @@ const INITIAL_BALANCE = 1_000_000;
 const LOT_SIZE = 65;
 const LIVE_CACHE_MS = 900;
 let niftyCache;
+let bitcoinCache;
+let goldCache;
 const equityCache = new Map();
 let googleKeysCache;
 
@@ -23,15 +25,30 @@ export default {
         await logout(request, env.DB);
         return json({ ok: true }, 200, headers);
       }
-      const account = await requireAccount(request, env.DB);
-      if (request.method === 'GET' && url.pathname === '/api/v1/auth/me') {
-        return json({ user: account }, 200, headers);
-      }
+      // Market data is deliberately public. The Flutter application keeps its
+      // account, orders and watchlist locally and calls the worker only here.
       if (request.method === 'GET' && url.pathname === '/api/v1/market/nifty') {
         return json(await loadNiftyChain(), 200, headers);
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/market/search') {
         return json(await searchMarket(url.searchParams.get('q') || ''), 200, headers);
+      }
+      if (request.method === 'GET' && url.pathname === '/api/v1/market/quote') {
+        const symbol = String(url.searchParams.get('symbol') || '').trim().toUpperCase();
+        if (!symbol) throw new HttpError(400, 'Symbol is required');
+        if (symbol === 'BTCUSD' || symbol === 'BTC-USD') {
+          return json(await loadBitcoinQuote(), 200, headers);
+        }
+        if (symbol === 'XAUUSD' || symbol === 'XUDUSD' || symbol === 'XAU-USD') {
+          return json(await loadGoldQuote(), 200, headers);
+        }
+        const chain = await loadNiftyChain();
+        return json(chain.quotes.find((quote) => quote.symbol === symbol) ||
+          await loadEquityQuote(symbol), 200, headers);
+      }
+      const account = await requireAccount(request, env.DB);
+      if (request.method === 'GET' && url.pathname === '/api/v1/auth/me') {
+        return json({ user: account }, 200, headers);
       }
       if (request.method === 'POST' && url.pathname === '/api/v1/watchlist') {
         const result = await addWatchlist(env.DB, account.id, await request.json());
@@ -267,6 +284,16 @@ async function nseJson(path, referer = `${NSE_BASE}/option-chain?symbol=NIFTY`) 
 async function searchMarket(rawQuery) {
   const query = rawQuery.trim();
   if (query.length < 2) return [];
+  const normalized = query.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Keep crypto independent from NSE availability: BTCUSD search can continue
+  // working even while NSE is temporarily rejecting option-chain requests.
+  if (['BTC', 'BTCUSD', 'BITCOIN'].some((term) => term.includes(normalized))) {
+    return [await loadBitcoinQuote()];
+  }
+  // XUDUSD is accepted as a common typo/alias for the XAUUSD gold pair.
+  if (['XAU', 'XAUUSD', 'XUDUSD', 'GOLD'].some((term) => term.includes(normalized))) {
+    return [await loadGoldQuote()];
+  }
   const chain = await loadNiftyChain();
   let equities = [];
   if (/[A-Za-z]/.test(query)) {
@@ -279,7 +306,6 @@ async function searchMarket(rawQuery) {
       console.error(error);
     }
   }
-  const normalized = query.toUpperCase().replace(/\s+/g, '');
   const equityResults = equities
     .filter((item) => item.series === 'EQ')
     .slice(0, 8)
@@ -306,6 +332,67 @@ async function searchMarket(rawQuery) {
     )
     .slice(0, 40);
   return [...equityResults, ...optionResults];
+}
+
+async function loadBitcoinQuote() {
+  if (bitcoinCache?.expiresAt > Date.now()) return bitcoinCache.value;
+  const headers = { accept: 'application/json', 'cache-control': 'no-cache' };
+  const [tickerResponse, statsResponse] = await Promise.all([
+    fetch('https://api.exchange.coinbase.com/products/BTC-USD/ticker', { headers }),
+    fetch('https://api.exchange.coinbase.com/products/BTC-USD/stats', { headers }),
+  ]);
+  if (!tickerResponse.ok) {
+    throw new HttpError(502, 'Coinbase BTC-USD ticker is temporarily unavailable');
+  }
+  const ticker = await tickerResponse.json();
+  const stats = statsResponse.ok ? await statsResponse.json() : {};
+  const last = Number(ticker.price);
+  const open = Number(stats.open || last);
+  const quote = {
+    symbol: 'BTCUSD',
+    name: 'Bitcoin / US Dollar (Coinbase Exchange)',
+    instrument_type: 'CRYPTO',
+    expiry: '',
+    strike: 0,
+    option_type: '',
+    lot_size: 1,
+    ltp: last,
+    bid: Number(ticker.bid || last),
+    ask: Number(ticker.ask || last),
+    change_percent: open ? ((last - open) / open) * 100 : 0,
+    timestamp: ticker.time || new Date().toISOString(),
+    source: 'Coinbase Exchange',
+  };
+  bitcoinCache = { value: quote, expiresAt: Date.now() + LIVE_CACHE_MS };
+  return quote;
+}
+
+async function loadGoldQuote() {
+  if (goldCache?.expiresAt > Date.now()) return goldCache.value;
+  const response = await fetch('https://xaus.com/api/v1/spot', {
+    headers: { accept: 'application/json', 'cache-control': 'no-cache' },
+  });
+  if (!response.ok) throw new HttpError(502, 'XAU/USD quote is temporarily unavailable');
+  const payload = await response.json();
+  const last = Number(payload.spot_usd_oz || payload.xau?.price);
+  if (!Number.isFinite(last) || last <= 0) throw new HttpError(502, 'XAU/USD quote is temporarily unavailable');
+  const quote = {
+    symbol: 'XAUUSD',
+    name: 'Gold Spot / US Dollar',
+    instrument_type: 'METAL',
+    expiry: '',
+    strike: 0,
+    option_type: '',
+    lot_size: 1,
+    ltp: last,
+    bid: last,
+    ask: last,
+    change_percent: 0,
+    timestamp: payload.updated_at || new Date().toISOString(),
+    source: 'XAUS spot API',
+  };
+  goldCache = { value: quote, expiresAt: Date.now() + LIVE_CACHE_MS };
+  return quote;
 }
 
 async function loadEquityQuote(symbol) {
@@ -376,6 +463,20 @@ async function loadAccountQuotes(db, accountId, chain) {
 
 async function loadNiftyChain() {
   if (niftyCache?.expiresAt > Date.now()) return niftyCache.value;
+  try {
+    return await loadNiftyChainLive();
+  } catch (error) {
+    // A transient NSE block must not blank out the app. Return the last
+    // verified chain from this worker instance; the device keeps a longer-lived
+    // cache as well.
+    if (niftyCache?.value) {
+      return { ...niftyCache.value, is_live: false, source: 'NSE India (last available)' };
+    }
+    throw error;
+  }
+}
+
+async function loadNiftyChainLive() {
   const info = await nseJson('/api/option-chain-contract-info?symbol=NIFTY');
   const expiry = info.expiryDates.find((value) => parseNseDate(value) >= startOfToday()) || info.expiryDates[0];
   const payload = await nseJson(`/api/option-chain-v3?type=Indices&symbol=NIFTY&expiry=${encodeURIComponent(expiry)}`);
