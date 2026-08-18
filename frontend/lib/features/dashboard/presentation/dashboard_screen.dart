@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../app/primary_footer.dart';
 import '../../trading/domain/trading_models.dart';
 import '../../trading/presentation/trading_controller.dart';
 
@@ -19,6 +22,11 @@ class DashboardScreen extends ConsumerWidget {
     final profileName = Hive.box<String>('foliox_settings')
         .get('local_account_name', defaultValue: 'Trader')!
         .trim();
+    final accountId = Hive.box<String>('foliox_settings')
+        .get('active_account_id', defaultValue: '')!;
+    final profilePhoto = _profilePhoto(
+      Hive.box<String>('foliox_settings').get('profile_image:$accountId'),
+    );
 
     ref.listen(tradingControllerProvider, (previous, next) {
       final text = next.error ?? next.message;
@@ -37,46 +45,7 @@ class DashboardScreen extends ConsumerWidget {
         icon: const Icon(Icons.add),
         label: const Text('Trade'),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        onDestinationSelected: (index) {
-          const routes = [
-            '/home',
-            '/portfolio',
-            '/trade',
-            '/positions',
-            '/profile',
-          ];
-          if (index != 0) context.push(routes[index]);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.pie_chart_outline),
-            selectedIcon: Icon(Icons.pie_chart),
-            label: 'Portfolio',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.candlestick_chart_outlined),
-            selectedIcon: Icon(Icons.candlestick_chart),
-            label: 'Trade',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
-            label: 'Positions',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      bottomNavigationBar: const PrimaryFooter(selectedIndex: 0, isHomeRoute: true),
       body: state.isLoading && state.snapshot == null
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -93,6 +62,7 @@ class DashboardScreen extends ConsumerWidget {
                     sliver: SliverToBoxAdapter(
                       child: _DashboardHeader(
                         name: profileName.isEmpty ? 'Trader' : profileName,
+                        photo: profilePhoto,
                         onProfile: () => context.push('/profile'),
                       ),
                     ),
@@ -122,6 +92,7 @@ class DashboardScreen extends ConsumerWidget {
                     sliver: SliverToBoxAdapter(
                       child: _PerformanceSnapshot(
                         totalPnl: portfolio?.totalPnl ?? 0,
+                        orders: state.snapshot?.orders ?? const [],
                       ),
                     ),
                   ),
@@ -258,33 +229,6 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      pagePadding,
-                      0,
-                      pagePadding,
-                      12,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: Text(
-                        'Trade history',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      pagePadding,
-                      0,
-                      pagePadding,
-                      24,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: _TradeHistory(
-                        orders: state.snapshot?.orders ?? const [],
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -297,7 +241,8 @@ class DashboardScreen extends ConsumerWidget {
     Quote quote,
     OrderSide side,
   ) async {
-    var lots = 1;
+    var lots = 1.0;
+    var leverage = 1;
     var target = '';
     var stopLoss = '';
     var orderPrice = '';
@@ -307,6 +252,19 @@ class DashboardScreen extends ConsumerWidget {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setState) {
           final price = side == OrderSide.buy ? quote.ask : quote.bid;
+          final leveragedAsset =
+              quote.instrumentType == 'CRYPTO' || quote.instrumentType == 'METAL';
+          final effectivePrice = orderType == EntryOrderType.market
+              ? price
+              : (double.tryParse(orderPrice) ?? price);
+          final notional = effectivePrice * lots * quote.lotSize;
+          final fundsUsed = notional / leverage;
+          final availableCash = ref
+              .read(tradingControllerProvider)
+              .snapshot
+              ?.portfolio
+              .cashBalance ?? 0;
+          final insufficientFunds = side == OrderSide.buy && fundsUsed > availableCash;
           return AlertDialog(
             title: Text(
               '${side == OrderSide.buy ? 'Buy' : 'Sell'} ${quote.symbol}',
@@ -357,32 +315,72 @@ class DashboardScreen extends ConsumerWidget {
                         onChanged: (value) => orderPrice = value,
                       ),
                     ],
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: lots > 1
-                              ? () => setState(() => lots--)
-                              : null,
-                          icon: const Icon(Icons.remove_circle_outline),
-                        ),
-                        Text(
-                          '$lots lot${lots == 1 ? '' : 's'}',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        IconButton(
-                          onPressed: () => setState(() => lots++),
-                          icon: const Icon(Icons.add_circle_outline),
-                        ),
-                      ],
-                    ),
+                    const SizedBox(height: 16),
+                    Text(leveragedAsset ? 'Lots' : 'Lots', style: Theme.of(context).textTheme.labelLarge),
+                    if (leveragedAsset)
+                      Wrap(
+                        spacing: 8,
+                        children: [1.0, 0.1, 0.001]
+                            .map((value) => ChoiceChip(
+                                  label: Text(_lotLabel(value)),
+                                  selected: lots == value,
+                                  onSelected: (_) => setState(() => lots = value),
+                                ))
+                            .toList(),
+                      )
+                    else
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: lots > 1
+                                ? () => setState(() => lots--)
+                                : null,
+                            icon: const Icon(Icons.remove_circle_outline),
+                          ),
+                          Text(
+                            '${_lotLabel(lots)} lot${lots == 1 ? '' : 's'}',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          IconButton(
+                            onPressed: () => setState(() => lots++),
+                            icon: const Icon(Icons.add_circle_outline),
+                          ),
+                        ],
+                      ),
+                    if (leveragedAsset) ...[
+                      const SizedBox(height: 14),
+                      Text('Leverage', style: Theme.of(context).textTheme.labelLarge),
+                      const SizedBox(height: 8),
+                      SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 1, label: Text('1×')),
+                          ButtonSegment(value: 10, label: Text('10×')),
+                          ButtonSegment(value: 20, label: Text('20×')),
+                          ButtonSegment(value: 50, label: Text('50×')),
+                          ButtonSegment(value: 100, label: Text('100×')),
+                        ],
+                        selected: {leverage},
+                        onSelectionChanged: (selection) =>
+                            setState(() => leverage = selection.first),
+                      ),
+                    ],
                     Text(
-                      'Quantity: ${lots * quote.lotSize} · Lot size: ${quote.lotSize}',
+                      'Quantity: ${_lotLabel(lots * quote.lotSize)} · Lot size: ${quote.lotSize}',
                     ),
                     const SizedBox(height: 8),
-                    Text('Estimated fill: ${_money(price, quote.symbol)}'),
+                    Text('Estimated fill: ${_money(effectivePrice, quote.symbol)}'),
                     Text(
-                      'Estimated value: ${_money(price * lots * quote.lotSize, quote.symbol)}',
+                      'Estimated market value: ${_money(notional, quote.symbol)}',
                     ),
+                    if (leveragedAsset)
+                      Text('Estimated funds used ($leverage×): ${_money(fundsUsed, quote.symbol)}'),
+                    Text('Available cash: ${_money(availableCash)}'),
+                    if (insufficientFunds)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text('Insufficient virtual funds', style: TextStyle(color: Colors.redAccent)),
+                      ),
                     const SizedBox(height: 16),
                     TextField(
                       keyboardType: const TextInputType.numberWithOptions(
@@ -420,17 +418,20 @@ class DashboardScreen extends ConsumerWidget {
                       ? Colors.teal
                       : Colors.red.shade700,
                 ),
-                onPressed: () async {
+                onPressed: insufficientFunds
+                    ? null
+                    : () async {
                   final succeeded = await ref
                       .read(tradingControllerProvider.notifier)
                       .placeOrder(
                         quote,
                         side,
-                        lots.toDouble(),
+                        lots,
                         orderType: orderType,
                         orderPrice: double.tryParse(orderPrice),
                         targetPrice: double.tryParse(target),
                         stopLoss: double.tryParse(stopLoss),
+                        leverage: leveragedAsset ? leverage : 1,
                       );
                   if (succeeded && dialogContext.mounted) {
                     Navigator.pop(dialogContext);
@@ -553,8 +554,13 @@ class DashboardScreen extends ConsumerWidget {
 }
 
 class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader({required this.name, required this.onProfile});
+  const _DashboardHeader({
+    required this.name,
+    required this.photo,
+    required this.onProfile,
+  });
   final String name;
+  final MemoryImage? photo;
   final VoidCallback onProfile;
 
   @override
@@ -581,7 +587,11 @@ class _DashboardHeader extends StatelessWidget {
       InkWell(
         onTap: onProfile,
         borderRadius: BorderRadius.circular(24),
-        child: CircleAvatar(radius: 21, child: Text(name.substring(0, 1).toUpperCase())),
+        child: CircleAvatar(
+          radius: 21,
+          backgroundImage: photo,
+          child: photo == null ? Text(name.substring(0, 1).toUpperCase()) : null,
+        ),
       ),
     ],
   );
@@ -638,8 +648,9 @@ class _QuickActions extends StatelessWidget {
 }
 
 class _PerformanceSnapshot extends StatelessWidget {
-  const _PerformanceSnapshot({required this.totalPnl});
+  const _PerformanceSnapshot({required this.totalPnl, required this.orders});
   final double totalPnl;
+  final List<TradeOrder> orders;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -670,17 +681,16 @@ class _PerformanceSnapshot extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              const SizedBox(height: 48, child: _Sparkline()),
-              const SizedBox(height: 12),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('1D'),
-                  Text('1W'),
-                  Chip(label: Text('1M')),
-                  Text('3M'),
-                  Text('1Y'),
-                ],
+              SizedBox(
+                height: 62,
+                child: _PnlSparkline(values: _performancePoints(orders, totalPnl)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                orders.where((order) => order.status == 'CLOSED').isEmpty
+                    ? 'Current mark-to-market P&L. Complete trades to build a history.'
+                    : 'Cumulative realized P&L, ending with current portfolio P&L.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
@@ -690,26 +700,33 @@ class _PerformanceSnapshot extends StatelessWidget {
   );
 }
 
-class _Sparkline extends StatelessWidget {
-  const _Sparkline();
+class _PnlSparkline extends StatelessWidget {
+  const _PnlSparkline({required this.values});
+  final List<double> values;
   @override
   Widget build(BuildContext context) => CustomPaint(
-    painter: _SparklinePainter(color: Theme.of(context).colorScheme.primary),
+    painter: _SparklinePainter(
+      color: values.last >= 0 ? Colors.greenAccent : Colors.redAccent,
+      values: values,
+    ),
     child: const SizedBox.expand(),
   );
 }
 
 class _SparklinePainter extends CustomPainter {
-  _SparklinePainter({required this.color});
+  _SparklinePainter({required this.color, required this.values});
   final Color color;
+  final List<double> values;
   @override
   void paint(Canvas canvas, Size size) {
-    final values = [.60, .35, .48, .30, .52, .43, .71, .58, .82];
+    final min = values.reduce((a, b) => a < b ? a : b);
+    final max = values.reduce((a, b) => a > b ? a : b);
+    final range = (max - min).abs().clamp(1, double.infinity);
     final path = Path();
     for (var i = 0; i < values.length; i++) {
       final point = Offset(
         size.width * i / (values.length - 1),
-        size.height * (1 - values[i]),
+        size.height - ((values[i] - min) / range * (size.height - 8)) - 4,
       );
       i == 0
           ? path.moveTo(point.dx, point.dy)
@@ -726,7 +743,7 @@ class _SparklinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SparklinePainter oldDelegate) =>
-      oldDelegate.color != color;
+      oldDelegate.color != color || oldDelegate.values != values;
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -837,13 +854,13 @@ class _Metrics extends StatelessWidget {
                     children: [
                       Expanded(
                         child: _PnlSummary(
-                          label: 'Current P&L',
-                          value: currentPnl,
+                          label: 'Usable funds',
+                          value: portfolio?.cashBalance ?? 0,
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: _PnlSummary(label: 'Total P&L', value: totalPnl),
+                        child: _PnlSummary(label: 'Current P&L', value: currentPnl),
                       ),
                     ],
                   ),
@@ -856,6 +873,7 @@ class _Metrics extends StatelessWidget {
     }
     final metrics = [
       ('Account equity', _money(portfolio?.equity ?? 0)),
+      ('Usable funds', _money(portfolio?.cashBalance ?? 0)),
       ('Current P&L', _money(currentPnl)),
       ('Total P&L', _money(totalPnl)),
       ('Open positions', '${portfolio?.positions.length ?? 0}'),
@@ -1106,7 +1124,7 @@ class _Positions extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Live ${position.timestamp.isEmpty ? '—' : position.timestamp} · Checked ${_clock(checkedAt)}',
+                        'Market data: ${_marketTime(position.timestamp)}\nApp refreshed: ${_clock(checkedAt)}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       Row(
@@ -1153,7 +1171,7 @@ class _Positions extends StatelessWidget {
             DataColumn(label: Text('Target')),
             DataColumn(label: Text('Stop-loss')),
             DataColumn(label: Text('P&L')),
-            DataColumn(label: Text('NSE tick / checked')),
+            DataColumn(label: Text('Market data / refresh')),
             DataColumn(label: Text('Actions')),
           ],
           rows: positions
@@ -1178,7 +1196,7 @@ class _Positions extends StatelessWidget {
                     DataCell(Text(_money(position.netPnl, position.symbol))),
                     DataCell(
                       Text(
-                        '${position.timestamp.isEmpty ? '—' : position.timestamp}\nChecked ${_clock(checkedAt)}',
+                        'Market: ${_marketTime(position.timestamp)}\nApp: ${_clock(checkedAt)}',
                       ),
                     ),
                     DataCell(
@@ -1450,6 +1468,12 @@ String _money(num value, [String? symbol]) =>
     '${_currencyPrefix(symbol)}${value.toStringAsFixed(2)}';
 String _optionalMoney(num? value, [String? symbol]) =>
     value == null ? '—' : _money(value, symbol);
+String _lotLabel(double value) => value == value.roundToDouble()
+    ? value.toStringAsFixed(0)
+    : value
+        .toStringAsFixed(3)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
 IconData _instrumentIcon(String type) => switch (type) {
   'CRYPTO' => Icons.currency_bitcoin_rounded,
   'METAL' => Icons.workspace_premium_outlined,
@@ -1462,4 +1486,28 @@ String _clock(DateTime? value) {
   final local = value.toLocal();
   String two(int number) => number.toString().padLeft(2, '0');
   return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+}
+
+String _marketTime(String value) => value.trim().isEmpty ? 'not supplied' : value;
+
+MemoryImage? _profilePhoto(String? encoded) {
+  if (encoded == null || encoded.isEmpty) return null;
+  try {
+    return MemoryImage(base64Decode(encoded));
+  } on FormatException {
+    return null;
+  }
+}
+
+List<double> _performancePoints(List<TradeOrder> orders, double currentPnl) {
+  final closed = orders.where((order) => order.status == 'CLOSED').toList()
+    ..sort((a, b) => (a.closedAt ?? a.createdAt).compareTo(b.closedAt ?? b.createdAt));
+  var cumulative = 0.0;
+  final points = <double>[0];
+  for (final trade in closed) {
+    cumulative += trade.pnl;
+    points.add(cumulative);
+  }
+  if (points.length == 1 || points.last != currentPnl) points.add(currentPnl);
+  return points;
 }

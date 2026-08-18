@@ -1,6 +1,6 @@
 {
-    "name": "Foliox Paper Trading",
-    "short_name": "Foliox",
+    "name": "MyPaperTrade",
+    "short_name": "MyPaperTrade",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

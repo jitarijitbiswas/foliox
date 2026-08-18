@@ -15,16 +15,9 @@ class OnboardingScreen extends StatelessWidget {
           children: [
             const Expanded(flex: 4, child: _MarketArtwork()),
             Text(
-              'Practice. Learn. Trade.',
+              'Practice Trading. Build Confidence.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            Text(
-              'Risk-Free.',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w800,
-              ),
             ),
             const SizedBox(height: 14),
             Text(

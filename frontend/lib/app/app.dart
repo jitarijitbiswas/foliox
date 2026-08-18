@@ -10,7 +10,7 @@ class PaperTradingApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
-      title: 'NSE Paper Trading',
+      title: 'MyPaperTrade',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

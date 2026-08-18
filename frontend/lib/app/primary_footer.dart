@@ -16,7 +16,14 @@ class PrimaryFooter extends StatelessWidget {
   Widget build(BuildContext context) => NavigationBar(
     selectedIndex: selectedIndex,
     onDestinationSelected: (index) {
-      const routes = ['/home', '/portfolio', '/trade', '/positions', '/profile'];
+      const routes = [
+        '/home',
+        '/portfolio',
+        '/trade',
+        '/positions',
+        '/analytics',
+        '/profile',
+      ];
       if (index != selectedIndex || (index == 0 && !isHomeRoute)) {
         context.go(routes[index]);
       }
@@ -26,6 +33,7 @@ class PrimaryFooter extends StatelessWidget {
       NavigationDestination(icon: Icon(Icons.pie_chart_outline), selectedIcon: Icon(Icons.pie_chart), label: 'Portfolio'),
       NavigationDestination(icon: Icon(Icons.candlestick_chart_outlined), selectedIcon: Icon(Icons.candlestick_chart), label: 'Trade'),
       NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet), label: 'Positions'),
+      NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Analytics'),
       NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
     ],
   );

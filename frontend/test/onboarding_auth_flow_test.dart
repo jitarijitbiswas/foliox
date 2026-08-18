@@ -56,7 +56,7 @@ void main() {
     final router = _router();
     await tester.pumpWidget(_app(router));
 
-    expect(find.text('Practice. Learn. Trade.'), findsOneWidget);
+    expect(find.text('Practice Trading. Build Confidence.'), findsOneWidget);
     expect(find.text('Get Started'), findsOneWidget);
     expect(find.text('Log In'), findsOneWidget);
 
@@ -174,7 +174,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.text('Practice. Learn. Trade.'), findsOneWidget);
+    expect(find.text('Practice Trading. Build Confidence.'), findsOneWidget);
   });
 }
 

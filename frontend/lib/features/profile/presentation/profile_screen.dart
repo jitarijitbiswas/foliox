@@ -35,7 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final photoBytes = photo == null ? null : base64Decode(photo);
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
-      bottomNavigationBar: const PrimaryFooter(selectedIndex: 4),
+      bottomNavigationBar: const PrimaryFooter(selectedIndex: 5),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
         children: [

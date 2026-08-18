@@ -39,7 +39,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
         onSelected: (value) { if (value == 'reset') _reset(context); },
         itemBuilder: (_) => const [PopupMenuItem(value: 'reset', child: Text('Reset Portfolio', style: TextStyle(color: _red)))],
       )]),
-      bottomNavigationBar: _nav(context, 1),
+      bottomNavigationBar: const PrimaryFooter(selectedIndex: 1),
       body: RefreshIndicator(
         onRefresh: () => ref.read(tradingControllerProvider.notifier).refresh(),
         child: positions.isEmpty && snapshot.orders.where((order) => order.status == 'CLOSED').isEmpty ? _empty(context, snapshot) : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
@@ -65,7 +65,29 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           if (snapshot.orders.any((order) => order.status == 'CLOSED')) ...[
             const SizedBox(height: 20),
             _SectionTitle('Portfolio History', action: 'View analytics →', onAction: () => context.push('/analytics')),
-            ...snapshot.orders.where((order) => order.status == 'CLOSED').take(5).map((order) => Card(margin: const EdgeInsets.only(top: 8), child: ListTile(leading: Icon(order.pnl >= 0 ? Icons.trending_up : Icons.trending_down, color: order.pnl >= 0 ? _green : _red), title: Text(order.symbol), subtitle: Text('${order.side} · ${order.quantity} units · Closed ${_date(order.closedAt ?? order.createdAt)}'), trailing: Text(_signed(order.pnl, order.symbol), style: TextStyle(color: order.pnl >= 0 ? _green : _red, fontWeight: FontWeight.w800))))),
+            ...snapshot.orders
+                .where((order) => order.status == 'CLOSED')
+                .take(5)
+                .map(
+                  (order) => Card(
+                    margin: const EdgeInsets.only(top: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [Icon(order.pnl >= 0 ? Icons.trending_up : Icons.trending_down, color: order.pnl >= 0 ? _green : _red), const SizedBox(width: 8), Expanded(child: Text(order.symbol, style: const TextStyle(fontWeight: FontWeight.w800))), Text(_signed(order.pnl, order.symbol), style: TextStyle(color: order.pnl >= 0 ? _green : _red, fontWeight: FontWeight.w800))]),
+                          const SizedBox(height: 10),
+                          Text('${order.side} · ${order.quantity} units${order.leverage > 1 ? ' · ${order.leverage}× leverage' : ''}', style: const TextStyle(color: Colors.white70)),
+                          const SizedBox(height: 6),
+                          Text('Entry ${_money(order.entryPrice, order.symbol)}  ·  ${_date(order.createdAt)}'),
+                          Text('Exit ${_money(order.exitPrice ?? order.entryPrice, order.symbol)}  ·  ${_date(order.closedAt ?? order.createdAt)}', style: const TextStyle(color: Colors.white70)),
+                          if (order.exitReason != null) Text('Exit reason: ${order.exitReason}', style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
           ],
           const SizedBox(height: 20),
           const _SectionTitle('Portfolio Allocation', info: 'Shows each open position and available cash as a share of your portfolio.'),
@@ -115,11 +137,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     final snapshot = ref.watch(tradingControllerProvider).snapshot;
     if (snapshot == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final report = TradingAnalyticsEngine.calculate(_filtered(snapshot.orders));
-    if (report.total == 0) return Scaffold(appBar: AppBar(title: const Text('Trading Analytics')), bottomNavigationBar: const PrimaryFooter(selectedIndex: 1), body: _analyticsEmpty(context));
+    if (report.total == 0) return Scaffold(appBar: AppBar(title: const Text('Trading Analytics')), bottomNavigationBar: const PrimaryFooter(selectedIndex: 4), body: _analyticsEmpty(context));
     final hasData = report.total >= 5;
     final best = [...report.trades]..sort((a,b) => b.realizedPnl.compareTo(a.realizedPnl));
     final worst = [...report.trades]..sort((a,b) => a.realizedPnl.compareTo(b.realizedPnl));
-    return Scaffold(appBar: AppBar(title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Trading Analytics'), Text('Your paper trading performance', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.white60))]), actions: [IconButton(onPressed: _showFilter, icon: const Icon(Icons.tune))]), bottomNavigationBar: const PrimaryFooter(selectedIndex: 1), body: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 32), children: [
+    return Scaffold(appBar: AppBar(title: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Trading Analytics'), Text('Your paper trading performance', style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.white60))]), actions: [IconButton(onPressed: _showFilter, icon: const Icon(Icons.tune))]), bottomNavigationBar: const PrimaryFooter(selectedIndex: 4), body: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 32), children: [
       _analyticsTabs(), const SizedBox(height: 18), _score(report), const SizedBox(height: 20),
       const _SectionTitle('Key Trading Metrics'),
       if (!hasData) const Padding(padding: EdgeInsets.only(bottom: 12), child: Text('Building data — advanced metrics appear after 5 completed trades.', style: TextStyle(color: Colors.white60))),
@@ -137,7 +159,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   Widget _analyticsTabs() => _tabs(_period, (v) => setState(() => _period = v), options: const ['Today','7D','30D','3M','All']);
 }
 
-NavigationBar _nav(BuildContext context, int selected) => NavigationBar(selectedIndex: selected, onDestinationSelected: (i) { const routes=['/home','/portfolio','/trade','/positions','/profile']; if (i != selected) context.go(routes[i]); }, destinations: const [NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'), NavigationDestination(icon: Icon(Icons.pie_chart_outline), label: 'Portfolio'), NavigationDestination(icon: Icon(Icons.candlestick_chart_outlined), label: 'Trade'), NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), label: 'Positions'), NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile')]);
 Widget _tabs(String selected, ValueChanged<String> onSelected, {List<String> options = const ['1D','1W','1M','3M','6M','1Y','ALL']}) => SingleChildScrollView(scrollDirection: Axis.horizontal, child: SegmentedButton<String>(showSelectedIcon: false, segments: options.map((x) => ButtonSegment(value:x,label:Text(x))).toList(), selected: {selected}, onSelectionChanged: (set) => onSelected(set.first)));
 class _SectionTitle extends StatelessWidget { const _SectionTitle(this.text,{this.action,this.onAction,this.info}); final String text; final String? action,info; final VoidCallback? onAction; @override Widget build(BuildContext c) => Row(children:[Expanded(child: Text(text, style: Theme.of(c).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800))), if(info!=null) Tooltip(message: info!, child: const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.info_outline,size:17))), if(action!=null) TextButton(onPressed:onAction,child:Text(action!))]); }
 Widget _summaryGrid(List<List<String>> values, List<bool> green) => GridView.count(

@@ -35,7 +35,7 @@ class AuthGate extends ConsumerWidget {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Welcome to Foliox',
+                      'Welcome to MyPaperTrade',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: 8),
