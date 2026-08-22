@@ -76,6 +76,15 @@ class _OrderEntryScreenState extends ConsumerState<OrderEntryScreen> {
     });
   }
 
+  void _setOrderType(EntryOrderType type, double capturedPrice) {
+    setState(() {
+      _type = type;
+      if (type != EntryOrderType.market && _price.text.trim().isEmpty) {
+        _price.text = _inputPrice(capturedPrice);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final quote = _quote(ref.watch(tradingControllerProvider).snapshot?.quotes ?? const [], widget.symbol);
@@ -93,7 +102,7 @@ class _OrderEntryScreenState extends ConsumerState<OrderEntryScreen> {
       appBar: AppBar(title: Text('${buy ? 'Buy' : 'Sell'} Order')),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Text(quote.symbol, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)), Text('${quote.instrumentType} · ${_priceFor(quote.ltp, quote.symbol)}'), const SizedBox(height: 22),
-        SegmentedButton<EntryOrderType>(segments: const [ButtonSegment(value: EntryOrderType.market, label: Text('Market')), ButtonSegment(value: EntryOrderType.limit, label: Text('Limit')), ButtonSegment(value: EntryOrderType.stopLoss, label: Text('Stop loss'))], selected: {_type}, onSelectionChanged: (value) => setState(() => _type = value.first)),
+        SegmentedButton<EntryOrderType>(segments: const [ButtonSegment(value: EntryOrderType.market, label: Text('Market')), ButtonSegment(value: EntryOrderType.limit, label: Text('Limit')), ButtonSegment(value: EntryOrderType.stopLoss, label: Text('Stop loss'))], selected: {_type}, onSelectionChanged: (value) => _setOrderType(value.first, current)),
         const SizedBox(height: 18), Text(leveraged ? 'Lots' : 'Quantity', style: Theme.of(context).textTheme.labelLarge),
         if (leveraged) ...[
           const SizedBox(height: 8),
@@ -112,7 +121,7 @@ class _OrderEntryScreenState extends ConsumerState<OrderEntryScreen> {
             errorText: quantityValid ? null : leveraged ? 'Enter a multiple of 0.001.' : 'Enter at least 1 unit.',
           ),
         ),
-        if (_type != EntryOrderType.market) TextField(controller: _price, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: _type == EntryOrderType.limit ? 'Limit price' : 'Trigger price', prefixText: _prefix(quote.symbol))),
+        if (_type != EntryOrderType.market) TextField(controller: _price, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: _type == EntryOrderType.limit ? 'Limit price' : 'Trigger price', prefixText: _prefix(quote.symbol), helperText: _type == EntryOrderType.limit ? 'Captured ${buy ? 'ask' : 'bid'}: ${_priceFor(current, quote.symbol)}. Adjust slightly to keep it pending.' : 'Captured ${buy ? 'ask' : 'bid'}: ${_priceFor(current, quote.symbol)}')),
         const SizedBox(height: 22), _OrderSummary(label: 'Estimated market value', value: _priceFor(total, quote.symbol)), if (leveraged) _OrderSummary(label: 'Estimated funds used ($_leverage× leverage)', value: _priceFor(fundsUsed, quote.symbol)), _OrderSummary(label: 'Available cash', value: _priceFor(cash, '')),
         if (_type == EntryOrderType.limit) Padding(padding: const EdgeInsets.only(top: 4), child: Text(buy ? 'To remain pending, set the buy limit below the current ask.' : 'To remain pending, set the sell limit above the current bid.', style: Theme.of(context).textTheme.bodySmall)),
         const SizedBox(height: 10),
@@ -283,6 +292,7 @@ Future<void> _showTradeDetails(BuildContext context, TradeOrder order) => showMo
 Quote? _quote(List<Quote> quotes, String symbol) { for (final quote in quotes) { if (quote.symbol == symbol) return quote; } return null; }
 String _prefix(String symbol) => symbol == 'BTCUSD' || symbol == 'XAUUSD' ? r'$ ' : '₹ ';
 String _priceFor(num value, String symbol) => '${_prefix(symbol)}${value.toStringAsFixed(2)}';
+String _inputPrice(double value) => value.toStringAsFixed(2);
 String _historyDate(DateTime date) => '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 String _tradeDateTime(DateTime date) => '${_historyDate(date)} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 String _lotsLabel(double value) => value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(3).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');

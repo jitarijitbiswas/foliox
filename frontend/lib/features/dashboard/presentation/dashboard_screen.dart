@@ -1125,7 +1125,7 @@ class _Positions extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Market data: ${_marketTime(position.timestamp)}\nApp refreshed: ${_clock(checkedAt)}',
+                        '${position.source.isEmpty ? 'Market data' : position.source}: ${_marketTime(position.timestamp)}\nApp refreshed: ${_clock(checkedAt)}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       Row(
@@ -1197,7 +1197,7 @@ class _Positions extends StatelessWidget {
                     DataCell(Text(_money(position.netPnl, position.symbol))),
                     DataCell(
                       Text(
-                        'Market: ${_marketTime(position.timestamp)}\nApp: ${_clock(checkedAt)}',
+                        '${position.source.isEmpty ? 'Market' : position.source}: ${_marketTime(position.timestamp)}\nApp: ${_clock(checkedAt)}',
                       ),
                     ),
                     DataCell(
@@ -1489,7 +1489,34 @@ String _clock(DateTime? value) {
   return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
 }
 
-String _marketTime(String value) => value.trim().isEmpty ? 'not supplied' : value;
+String _marketTime(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return 'not supplied';
+
+  // NSE supplies its own already-local display time. External exchanges return
+  // ISO-8601 UTC timestamps, which are clearer when rendered in the app's
+  // market timezone instead of showing a raw UTC value.
+  final timestamp = DateTime.tryParse(trimmed);
+  if (timestamp == null) return trimmed;
+  final ist = timestamp.toUtc().add(const Duration(hours: 5, minutes: 30));
+  const months = <String>[
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${two(ist.day)}-${months[ist.month - 1]}-${ist.year} '
+      '${two(ist.hour)}:${two(ist.minute)}:${two(ist.second)} IST';
+}
 
 MemoryImage? _profilePhoto(String? encoded) {
   if (encoded == null || encoded.isEmpty) return null;

@@ -15,6 +15,8 @@ class Quote {
     this.expiry = '',
     this.strike = 0,
     this.optionType = '',
+    this.timestamp = '',
+    this.source = '',
   });
 
   factory Quote.fromJson(Map<String, dynamic> json) => Quote(
@@ -29,6 +31,8 @@ class Quote {
     expiry: json['expiry']?.toString() ?? '',
     strike: _number(json['strike'] ?? 0),
     optionType: json['option_type']?.toString() ?? '',
+    timestamp: json['timestamp']?.toString() ?? '',
+    source: json['source']?.toString() ?? '',
   );
 
   final String symbol;
@@ -42,6 +46,8 @@ class Quote {
   final String expiry;
   final double strike;
   final String optionType;
+  final String timestamp;
+  final String source;
 
   bool get isTradable => instrumentType != 'INDEX';
 
@@ -62,6 +68,8 @@ class Quote {
     expiry: expiry,
     strike: strike,
     optionType: optionType,
+    timestamp: timestamp,
+    source: source,
   );
 }
 
@@ -79,6 +87,7 @@ class Position {
     this.stopLoss,
     this.orderId = '',
     this.timestamp = '',
+    this.source = '',
   });
 
   factory Position.fromJson(Map<String, dynamic> json) => Position(
@@ -94,6 +103,7 @@ class Position {
     stopLoss: _nullableNumber(json['stop_loss']),
     orderId: json['order_id']?.toString() ?? '',
     timestamp: json['timestamp']?.toString() ?? '',
+    source: json['source']?.toString() ?? '',
   );
 
   final String symbol;
@@ -108,12 +118,14 @@ class Position {
   final double? stopLoss;
   final String orderId;
   final String timestamp;
+  final String source;
 
   Position copyWith({
     double? ltp,
     double? unrealizedPnl,
     double? netPnl,
     String? timestamp,
+    String? source,
   }) => Position(
     symbol: symbol,
     quantity: quantity,
@@ -127,6 +139,7 @@ class Position {
     stopLoss: stopLoss,
     orderId: orderId,
     timestamp: timestamp ?? this.timestamp,
+    source: source ?? this.source,
   );
 }
 

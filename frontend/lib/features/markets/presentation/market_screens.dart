@@ -57,12 +57,6 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             const Chip(label: Text('My Watchlist')),
-            const SizedBox(height: 14),
-            _MarketBanner(
-              underlying: state.snapshot?.underlying ?? 0,
-              isLive: state.snapshot?.marketIsLive ?? false,
-              source: state.snapshot?.marketSource ?? '',
-            ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -256,8 +250,6 @@ class StockDetailScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const _ChartPanel(),
-          const SizedBox(height: 20),
           Text(
             'Today\'s Stats',
             style: Theme.of(
@@ -331,8 +323,6 @@ class InstrumentRow extends StatelessWidget {
               ],
             ),
           ),
-          _QuoteRangeGraph(quote: quote),
-          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -364,7 +354,7 @@ class InstrumentRow extends StatelessWidget {
   );
 }
 
-class _MarketBanner extends StatelessWidget {
+/* class _MarketBanner extends StatelessWidget {
   const _MarketBanner({
     required this.underlying,
     required this.isLive,
@@ -465,6 +455,8 @@ class _QuoteRangePainter extends CustomPainter {
       oldDelegate.values != values || oldDelegate.color != color;
 }
 
+} */
+
 class _EmptyWatchlist extends StatelessWidget {
   const _EmptyWatchlist({required this.onAdd});
   final VoidCallback onAdd;
@@ -492,21 +484,6 @@ class _EmptyWatchlist extends StatelessWidget {
         ),
       ],
     ),
-  );
-}
-
-class _ChartPanel extends StatelessWidget {
-  const _ChartPanel();
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 180,
-    decoration: BoxDecoration(
-      color: Theme.of(
-        context,
-      ).colorScheme.surfaceContainerHighest.withValues(alpha: .35),
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: const Center(child: Icon(Icons.show_chart_rounded, size: 76)),
   );
 }
 

@@ -101,7 +101,12 @@ class LocalAccountStore {
         targetPrice: _nullable(order['target_price']),
         stopLoss: _nullable(order['stop_loss']),
         orderId: order['id'].toString(),
-        timestamp: market['timestamp']?.toString() ?? '',
+        timestamp: quote.timestamp.isNotEmpty
+            ? quote.timestamp
+            : market['timestamp']?.toString() ?? '',
+        source: quote.source.isNotEmpty
+            ? quote.source
+            : market['source']?.toString() ?? '',
       );
     }).toList();
     final completed = orders.where((item) => item['status'] == 'CLOSED');

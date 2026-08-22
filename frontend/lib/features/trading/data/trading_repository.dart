@@ -251,7 +251,7 @@ class TradingRepository {
     if (stop != null && (side == OrderSide.buy ? stop >= reference : stop <= reference)) throw StateError('Stop-loss must be on the losing side of the entry price.');
   }
 
-  Map<String, dynamic> _quoteJson(Quote quote) => {'symbol': quote.symbol, 'name': quote.name, 'instrument_type': quote.instrumentType, 'lot_size': quote.lotSize, 'ltp': quote.ltp, 'bid': quote.bid, 'ask': quote.ask, 'change_percent': quote.changePercent, 'expiry': quote.expiry, 'strike': quote.strike, 'option_type': quote.optionType};
+  Map<String, dynamic> _quoteJson(Quote quote) => {'symbol': quote.symbol, 'name': quote.name, 'instrument_type': quote.instrumentType, 'lot_size': quote.lotSize, 'ltp': quote.ltp, 'bid': quote.bid, 'ask': quote.ask, 'change_percent': quote.changePercent, 'expiry': quote.expiry, 'strike': quote.strike, 'option_type': quote.optionType, 'timestamp': quote.timestamp, 'source': quote.source};
   static double _number(dynamic value) => double.parse(value.toString());
   static double? _nullable(dynamic value) => value == null ? null : _number(value);
   static bool _usesQuoteEndpoint(dynamic type) =>
