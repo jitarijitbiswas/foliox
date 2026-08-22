@@ -250,6 +250,8 @@ class PendingOrder {
     required this.status,
     required this.createdAt,
     this.leverage = 1,
+    this.targetPrice,
+    this.stopLoss,
   });
 
   factory PendingOrder.fromJson(Map<String, dynamic> json) => PendingOrder(
@@ -262,6 +264,8 @@ class PendingOrder {
     status: json['status'].toString(),
     createdAt: DateTime.parse(json['created_at'].toString()),
     leverage: int.tryParse(json['leverage']?.toString() ?? '') ?? 1,
+    targetPrice: _nullableNumber(json['target_price']),
+    stopLoss: _nullableNumber(json['stop_loss']),
   );
 
   final String id;
@@ -269,6 +273,8 @@ class PendingOrder {
   final String side;
   final double quantity;
   final int leverage;
+  final double? targetPrice;
+  final double? stopLoss;
   final String orderType;
   final double orderPrice;
   final String status;

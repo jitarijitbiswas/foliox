@@ -110,12 +110,11 @@ class TradingRepository {
   }
 
   Future<void> closeTrade(String orderId) async {
-    final market = await _marketSnapshot();
     final orders = _store.orders;
     final index = orders.indexWhere((order) => order['id'] == orderId && order['status'] == 'OPEN');
     if (index < 0) throw StateError('Open trade not found.');
     final order = orders[index];
-    final quote = _findQuote(market, order['symbol'].toString()) ?? Quote.fromJson(Map<String, dynamic>.from(order['quote'] as Map));
+    final quote = await _quote(order['symbol'].toString());
     orders[index] = _closed(order, order['side'] == 'BUY' ? quote.bid : quote.ask, 'MANUAL');
     await _store.saveOrders(orders);
   }
@@ -125,6 +124,35 @@ class TradingRepository {
     final index = pending.indexWhere((order) => order['id'] == orderId && order['status'] == 'PENDING');
     if (index < 0) throw StateError('Pending order not found.');
     pending[index] = {...pending[index], 'status': 'CANCELLED'};
+    await _store.savePendingOrders(pending);
+  }
+
+  Future<void> updatePendingOrder({
+    required String orderId,
+    required double quantity,
+    required double orderPrice,
+    double? targetPrice,
+    double? stopLoss,
+  }) async {
+    if (quantity <= 0 || orderPrice <= 0) {
+      throw StateError('Quantity and order price must be greater than zero.');
+    }
+    final pending = _store.pendingOrders;
+    final index = pending.indexWhere(
+      (order) => order['id'] == orderId && order['status'] == 'PENDING',
+    );
+    if (index < 0) throw StateError('Pending order not found.');
+    final order = pending[index];
+    final side = order['side'] == 'BUY' ? OrderSide.buy : OrderSide.sell;
+    _validateRisk(side, orderPrice, targetPrice, stopLoss);
+    pending[index] = {
+      ...order,
+      'quantity': quantity,
+      'order_price': orderPrice,
+      'target_price': targetPrice,
+      'stop_loss': stopLoss,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
     await _store.savePendingOrders(pending);
   }
 
@@ -158,19 +186,22 @@ class TradingRepository {
         '/market/quote',
         queryParameters: {'symbol': normalized == 'XUDUSD' ? 'XAUUSD' : normalized},
       );
-      return Quote.fromJson(response.data!);
+      return Quote.fromJson(Map<String, dynamic>.from(response.data!));
     }
     final market = await _marketSnapshot();
     final option = _findQuote(market, symbol);
     if (option != null) return option;
     final response = await _dio.get<Map<String, dynamic>>('/market/quote', queryParameters: {'symbol': symbol});
-    return Quote.fromJson(response.data!);
+    return Quote.fromJson(Map<String, dynamic>.from(response.data!));
   }
 
   Future<void> _refreshSavedExternalQuotes() async {
     final saved = <Map>[
       ..._store.watchlist.where((item) => _usesQuoteEndpoint(item['instrument_type'])),
       ..._store.orders
+          .where((item) => item['quote'] is Map && _usesQuoteEndpoint((item['quote'] as Map)['instrument_type']))
+          .map((item) => item['quote'] as Map),
+      ..._store.pendingOrders
           .where((item) => item['quote'] is Map && _usesQuoteEndpoint((item['quote'] as Map)['instrument_type']))
           .map((item) => item['quote'] as Map),
     ];
@@ -189,8 +220,11 @@ class TradingRepository {
     final watchlist = _store.watchlist.map((item) => latest[item['symbol']] ?? item).toList();
     final orders = _store.orders.map((item) => latest[item['symbol']] == null
         ? item : {...item, 'quote': latest[item['symbol']]}).toList();
+    final pending = _store.pendingOrders.map((item) => latest[item['symbol']] == null
+        ? item : {...item, 'quote': latest[item['symbol']]}).toList();
     await _store.saveWatchlist(watchlist);
     await _store.saveOrders(orders);
+    await _store.savePendingOrders(pending);
   }
 
   Quote? _findQuote(Map<String, dynamic> market, String symbol) {
@@ -227,14 +261,15 @@ class TradingRepository {
       final item = orders[i];
       if (item['status'] != 'OPEN') continue;
       final quote = _findQuote(market, item['symbol'].toString()) ?? Quote.fromJson(Map<String, dynamic>.from(item['quote'] as Map));
-      final mark = quote.ltp;
       final buy = item['side'] == 'BUY';
+      // Use the actual close-side price, rather than a display-only LTP.
+      final execution = buy ? quote.bid : quote.ask;
       final target = _nullable(item['target_price']);
       final stop = _nullable(item['stop_loss']);
-      final targetHit = target != null && (buy ? mark >= target : mark <= target);
-      final stopHit = stop != null && (buy ? mark <= stop : mark >= stop);
+      final targetHit = target != null && (buy ? execution >= target : execution <= target);
+      final stopHit = stop != null && (buy ? execution <= stop : execution >= stop);
       if (targetHit || stopHit) {
-        orders[i] = _closed(item, buy ? quote.bid : quote.ask, targetHit ? 'TARGET' : 'STOP_LOSS');
+        orders[i] = _closed(item, execution, targetHit ? 'TARGET' : 'STOP_LOSS');
         changed = true;
       }
     }

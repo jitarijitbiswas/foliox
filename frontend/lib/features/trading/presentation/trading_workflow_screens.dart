@@ -234,12 +234,141 @@ class OrdersScreen extends ConsumerWidget {
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Text('Open Orders', style: Theme.of(context).textTheme.titleMedium),
         if (pending.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('No open orders')),
-        ...pending.map((item) => Card(child: ListTile(title: Text(item.symbol), subtitle: Text('${item.side} · ${item.orderType} · ${item.quantity}'), trailing: TextButton(onPressed: () => ref.read(tradingControllerProvider.notifier).cancelPendingOrder(item.id), child: const Text('Cancel'))))),
+        ...pending.map((item) => _PendingOrderRow(order: item)),
         const SizedBox(height: 20),
         Text('Order History', style: Theme.of(context).textTheme.titleMedium),
         ...history.map((item) => Card(child: ListTile(onTap: item.status == 'CLOSED' ? () => _showTradeDetails(context, item) : null, title: Text(item.symbol), subtitle: Text('${item.side} · ${item.status}'), trailing: Text(_priceFor(item.pnl, item.symbol))))),
       ]),
     );
+  }
+}
+
+class _PendingOrderRow extends ConsumerWidget {
+  const _PendingOrderRow({required this.order});
+  final PendingOrder order;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Card(
+    child: ListTile(
+      title: Text(order.symbol),
+      subtitle: Text(
+        '${order.side} · ${order.orderType} · ${_lotsLabel(order.quantity)}\n'
+        'Price ${_priceFor(order.orderPrice, order.symbol)}'
+        '${order.targetPrice == null ? '' : ' · Target ${_priceFor(order.targetPrice!, order.symbol)}'}'
+        '${order.stopLoss == null ? '' : ' · Stop ${_priceFor(order.stopLoss!, order.symbol)}'}',
+      ),
+      isThreeLine: order.targetPrice != null || order.stopLoss != null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextButton(
+            onPressed: () => _editPendingOrder(context, ref, order),
+            child: const Text('Edit'),
+          ),
+          TextButton(
+            onPressed: () => ref
+                .read(tradingControllerProvider.notifier)
+                .cancelPendingOrder(order.id),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<void> _editPendingOrder(
+  BuildContext context,
+  WidgetRef ref,
+  PendingOrder order,
+) async {
+  final quantity = TextEditingController(text: _lotsLabel(order.quantity));
+  final price = TextEditingController(text: _inputPrice(order.orderPrice));
+  final target = TextEditingController(
+    text: order.targetPrice == null ? '' : _inputPrice(order.targetPrice!),
+  );
+  final stop = TextEditingController(
+    text: order.stopLoss == null ? '' : _inputPrice(order.stopLoss!),
+  );
+  try {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Edit ${order.symbol} ${order.orderType}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: quantity,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Quantity'),
+              ),
+              TextField(
+                controller: price,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: order.orderType == 'LIMIT'
+                      ? 'Limit price'
+                      : 'Trigger price',
+                  prefixText: _prefix(order.symbol),
+                ),
+              ),
+              TextField(
+                controller: target,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Target price (optional)',
+                  prefixText: _prefix(order.symbol),
+                ),
+              ),
+              TextField(
+                controller: stop,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Stop-loss price (optional)',
+                  prefixText: _prefix(order.symbol),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final parsedQuantity = double.tryParse(quantity.text);
+              final parsedPrice = double.tryParse(price.text);
+              if (parsedQuantity == null || parsedPrice == null) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('Enter a valid quantity and price.')),
+                );
+                return;
+              }
+              final saved = await ref
+                  .read(tradingControllerProvider.notifier)
+                  .updatePendingOrder(
+                    order.id,
+                    quantity: parsedQuantity,
+                    orderPrice: parsedPrice,
+                    targetPrice: _optionalNumber(target.text),
+                    stopLoss: _optionalNumber(stop.text),
+                  );
+              if (saved && dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('Save changes'),
+          ),
+        ],
+      ),
+    );
+  } finally {
+    quantity.dispose();
+    price.dispose();
+    target.dispose();
+    stop.dispose();
   }
 }
 
@@ -293,6 +422,8 @@ Quote? _quote(List<Quote> quotes, String symbol) { for (final quote in quotes) {
 String _prefix(String symbol) => symbol == 'BTCUSD' || symbol == 'XAUUSD' ? r'$ ' : '₹ ';
 String _priceFor(num value, String symbol) => '${_prefix(symbol)}${value.toStringAsFixed(2)}';
 String _inputPrice(double value) => value.toStringAsFixed(2);
+double? _optionalNumber(String value) =>
+    value.trim().isEmpty ? null : double.tryParse(value);
 String _historyDate(DateTime date) => '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 String _tradeDateTime(DateTime date) => '${_historyDate(date)} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 String _lotsLabel(double value) => value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(3).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');

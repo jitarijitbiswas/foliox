@@ -363,6 +363,34 @@ class TradingController extends StateNotifier<TradingState> {
     }
   }
 
+  Future<bool> updatePendingOrder(
+    String orderId, {
+    required double quantity,
+    required double orderPrice,
+    double? targetPrice,
+    double? stopLoss,
+  }) async {
+    state = state.copyWith(isSubmitting: true, clearFeedback: true);
+    try {
+      await _repository.updatePendingOrder(
+        orderId: orderId,
+        quantity: quantity,
+        orderPrice: orderPrice,
+        targetPrice: targetPrice,
+        stopLoss: stopLoss,
+      );
+      await refresh(silent: true);
+      state = state.copyWith(
+        isSubmitting: false,
+        message: 'Pending order updated',
+      );
+      return true;
+    } catch (error) {
+      state = state.copyWith(isSubmitting: false, error: _messageFor(error));
+      return false;
+    }
+  }
+
   Future<bool> placeOrder(
     Quote quote,
     OrderSide side,
