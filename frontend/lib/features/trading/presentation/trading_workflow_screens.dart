@@ -261,10 +261,12 @@ class _PendingOrderRow extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextButton(
+          OutlinedButton.icon(
             onPressed: () => _editPendingOrder(context, ref, order),
-            child: const Text('Edit'),
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('Edit'),
           ),
+          const SizedBox(width: 4),
           TextButton(
             onPressed: () => ref
                 .read(tradingControllerProvider.notifier)

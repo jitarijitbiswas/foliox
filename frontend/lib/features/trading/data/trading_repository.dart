@@ -262,12 +262,14 @@ class TradingRepository {
       if (item['status'] != 'OPEN') continue;
       final quote = _findQuote(market, item['symbol'].toString()) ?? Quote.fromJson(Map<String, dynamic>.from(item['quote'] as Map));
       final buy = item['side'] == 'BUY';
-      // Use the actual close-side price, rather than a display-only LTP.
+      // Trigger from the displayed live price; exit at the executable side.
+      // This makes a target fire as soon as the LTP the user sees reaches it.
+      final mark = quote.ltp;
       final execution = buy ? quote.bid : quote.ask;
       final target = _nullable(item['target_price']);
       final stop = _nullable(item['stop_loss']);
-      final targetHit = target != null && (buy ? execution >= target : execution <= target);
-      final stopHit = stop != null && (buy ? execution <= stop : execution >= stop);
+      final targetHit = target != null && (buy ? mark >= target : mark <= target);
+      final stopHit = stop != null && (buy ? mark <= stop : mark >= stop);
       if (targetHit || stopHit) {
         orders[i] = _closed(item, execution, targetHit ? 'TARGET' : 'STOP_LOSS');
         changed = true;
