@@ -56,15 +56,13 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Row(
-              children: [
-                Chip(label: Text('My Watchlist')),
-                SizedBox(width: 8),
-                Text('Popular'),
-              ],
-            ),
+            const Chip(label: Text('My Watchlist')),
             const SizedBox(height: 14),
-            _MarketBanner(underlying: state.snapshot?.underlying ?? 0),
+            _MarketBanner(
+              underlying: state.snapshot?.underlying ?? 0,
+              isLive: state.snapshot?.marketIsLive ?? false,
+              source: state.snapshot?.marketSource ?? '',
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -333,6 +331,8 @@ class InstrumentRow extends StatelessWidget {
               ],
             ),
           ),
+          _QuoteRangeGraph(quote: quote),
+          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -365,26 +365,104 @@ class InstrumentRow extends StatelessWidget {
 }
 
 class _MarketBanner extends StatelessWidget {
-  const _MarketBanner({required this.underlying});
+  const _MarketBanner({
+    required this.underlying,
+    required this.isLive,
+    required this.source,
+  });
   final double underlying;
+  final bool isLive;
+  final String source;
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          const Icon(Icons.circle, color: Colors.greenAccent, size: 10),
+          Icon(
+            Icons.circle,
+            color: isLive ? Colors.greenAccent : Colors.orangeAccent,
+            size: 10,
+          ),
           const SizedBox(width: 8),
-          const Text('Market Open'),
-          const Spacer(),
+          Expanded(
+            child: Tooltip(
+              message: source.isEmpty ? 'NSE market-data status' : source,
+              child: Text(
+                isLive ? 'Market Open' : 'Market Closed · Last available data',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           Text(
-            'NIFTY 50  ${_price(underlying, '')}',
+            underlying > 0 ? 'NIFTY 50  ${_price(underlying, '')}' : 'NIFTY unavailable',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ],
       ),
     ),
   );
+}
+
+/// A compact, truthful quote-range visual: bid → last traded price → ask.
+/// It is intentionally not presented as historical price data.
+class _QuoteRangeGraph extends StatelessWidget {
+  const _QuoteRangeGraph({required this.quote});
+  final Quote quote;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label:
+        'Current quote range. Bid ${_price(quote.bid, quote.symbol)}, last ${_price(quote.ltp, quote.symbol)}, ask ${_price(quote.ask, quote.symbol)}.',
+    child: SizedBox(
+      width: 54,
+      height: 30,
+      child: CustomPaint(
+        painter: _QuoteRangePainter(
+          values: [quote.bid, quote.ltp, quote.ask],
+          color: quote.changePercent >= 0
+              ? Colors.greenAccent
+              : Colors.redAccent,
+        ),
+      ),
+    ),
+  );
+}
+
+class _QuoteRangePainter extends CustomPainter {
+  const _QuoteRangePainter({required this.values, required this.color});
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final min = values.reduce((a, b) => a < b ? a : b);
+    final max = values.reduce((a, b) => a > b ? a : b);
+    final range = (max - min).abs().clamp(.01, double.infinity);
+    final points = <Offset>[];
+    for (var index = 0; index < values.length; index++) {
+      points.add(
+        Offset(
+          index * size.width / (values.length - 1),
+          size.height - 4 - (values[index] - min) / range * (size.height - 8),
+        ),
+      );
+    }
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke;
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) path.lineTo(point.dx, point.dy);
+    canvas.drawPath(path, paint);
+    canvas.drawCircle(points[1], 2.8, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _QuoteRangePainter oldDelegate) =>
+      oldDelegate.values != values || oldDelegate.color != color;
 }
 
 class _EmptyWatchlist extends StatelessWidget {

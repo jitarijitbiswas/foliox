@@ -126,6 +126,8 @@ class LocalAccountStore {
       ),
       orders: orders.map(TradeOrder.fromJson).toList(),
       pendingOrders: pendingOrders.map(PendingOrder.fromJson).toList(),
+      marketIsLive: market['is_live'] == true,
+      marketSource: market['source']?.toString() ?? '',
       underlying: _number(market['underlying'] ?? 0),
       expiry: market['expiry']?.toString() ?? '',
       timestamp: market['timestamp']?.toString() ?? '',

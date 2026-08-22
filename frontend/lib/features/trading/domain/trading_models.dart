@@ -272,6 +272,8 @@ class TradingSnapshot {
     this.timestamp = '',
     this.refreshedAt,
     this.pendingOrders = const [],
+    this.marketIsLive = false,
+    this.marketSource = '',
   });
 
   factory TradingSnapshot.fromJson(Map<String, dynamic> json) =>
@@ -294,6 +296,8 @@ class TradingSnapshot {
         pendingOrders: (json['pending_orders'] as List<dynamic>? ?? const [])
             .map((item) => PendingOrder.fromJson(item as Map<String, dynamic>))
             .toList(),
+        marketIsLive: json['is_live'] == true,
+        marketSource: json['source']?.toString() ?? '',
       );
 
   final List<Quote> quotes;
@@ -304,6 +308,8 @@ class TradingSnapshot {
   final String timestamp;
   final DateTime? refreshedAt;
   final List<PendingOrder> pendingOrders;
+  final bool marketIsLive;
+  final String marketSource;
 
   TradingSnapshot copyWith({
     List<Quote>? quotes,
@@ -318,6 +324,8 @@ class TradingSnapshot {
     timestamp: timestamp ?? this.timestamp,
     refreshedAt: refreshedAt,
     pendingOrders: pendingOrders,
+    marketIsLive: marketIsLive,
+    marketSource: marketSource,
   );
 }
 

@@ -175,7 +175,7 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'NIFTY ${_money(state.snapshot?.underlying ?? 0)} · Live quotes · Updated ${_clock(state.snapshot?.refreshedAt)}',
+                            '${state.snapshot?.marketIsLive == true ? 'Live market data' : 'Last available market data'} · Updated ${_clock(state.snapshot?.refreshedAt)}',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -195,7 +195,9 @@ class DashboardScreen extends ConsumerWidget {
                               controller.removeFromWatchlist(quote.symbol),
                           onTrade: quote.isTradable
                               ? (side) =>
-                                    _showOrderTicket(context, ref, quote, side)
+                                    context.push(
+                                      '/trade/${Uri.encodeComponent(quote.symbol)}?side=${side == OrderSide.buy ? 'BUY' : 'SELL'}',
+                                    )
                               : null,
                         );
                       },
@@ -602,7 +604,6 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
     const actions = [
       (Icons.star_outline, 'Watchlist', '/watchlist'),
-      (Icons.query_stats_outlined, 'Markets', '/markets'),
       (Icons.account_balance_wallet_outlined, 'Positions', '/positions'),
       (Icons.receipt_long_outlined, 'Orders', '/orders'),
     ];

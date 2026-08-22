@@ -66,6 +66,15 @@ class TradingRepository {
     final entry = side == OrderSide.buy ? quote.ask : quote.bid;
     final price = orderType == EntryOrderType.market ? entry : orderPrice;
     if (price == null || price <= 0) throw StateError('Enter a valid limit or trigger price.');
+    if (orderType == EntryOrderType.limit &&
+        ((side == OrderSide.buy && price >= entry) ||
+            (side == OrderSide.sell && price <= entry))) {
+      throw StateError(
+        side == OrderSide.buy
+            ? 'Buy limit must be below the current ask to remain pending.'
+            : 'Sell limit must be above the current bid to remain pending.',
+      );
+    }
     _validateRisk(side, price, targetPrice, stopLoss);
     final margin = entry * quantity / leverage.clamp(1, 100);
     if (side == OrderSide.buy && orderType == EntryOrderType.market &&
