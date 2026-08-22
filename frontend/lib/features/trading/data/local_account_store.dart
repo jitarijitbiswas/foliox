@@ -84,7 +84,7 @@ class LocalAccountStore {
     final positions = openOrders.map((order) {
       final quote =
           quotes[order['symbol']] ??
-          Quote.fromJson(order['quote'] as Map<String, dynamic>);
+          Quote.fromJson(Map<String, dynamic>.from(order['quote'] as Map));
       final side = order['side'].toString();
       final entry = _number(order['entry_price']);
       final qty = _number(order['quantity']);

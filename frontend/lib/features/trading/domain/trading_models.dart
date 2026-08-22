@@ -160,7 +160,7 @@ class Portfolio {
     unrealizedPnl: _number(json['unrealized_pnl']),
     totalPnl: _number(json['total_pnl']),
     positions: (json['positions'] as List<dynamic>)
-        .map((item) => Position.fromJson(item as Map<String, dynamic>))
+        .map((item) => Position.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList(),
   );
 
@@ -292,13 +292,13 @@ class TradingSnapshot {
   factory TradingSnapshot.fromJson(Map<String, dynamic> json) =>
       TradingSnapshot(
         quotes: (json['quotes'] as List<dynamic>)
-            .map((item) => Quote.fromJson(item as Map<String, dynamic>))
+            .map((item) => Quote.fromJson(Map<String, dynamic>.from(item as Map)))
             .toList(),
         portfolio: Portfolio.fromJson(
-          json['portfolio'] as Map<String, dynamic>,
+          Map<String, dynamic>.from(json['portfolio'] as Map),
         ),
         orders: (json['orders'] as List<dynamic>? ?? const [])
-            .map((item) => TradeOrder.fromJson(item as Map<String, dynamic>))
+            .map((item) => TradeOrder.fromJson(Map<String, dynamic>.from(item as Map)))
             .toList(),
         underlying: _number(json['underlying'] ?? 0),
         expiry: json['expiry']?.toString() ?? '',
@@ -307,7 +307,7 @@ class TradingSnapshot {
             ? null
             : DateTime.parse(json['refreshed_at'].toString()),
         pendingOrders: (json['pending_orders'] as List<dynamic>? ?? const [])
-            .map((item) => PendingOrder.fromJson(item as Map<String, dynamic>))
+            .map((item) => PendingOrder.fromJson(Map<String, dynamic>.from(item as Map)))
             .toList(),
         marketIsLive: json['is_live'] == true,
         marketSource: json['source']?.toString() ?? '',

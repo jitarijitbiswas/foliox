@@ -38,7 +38,9 @@ class AuthRepository {
     if (_box.get('session_token') == null) return null;
     try {
       final response = await _dio.get<Map<String, dynamic>>('/auth/me');
-      return AuthUser.fromJson(response.data!['user'] as Map<String, dynamic>);
+      return AuthUser.fromJson(
+        Map<String, dynamic>.from(response.data!['user'] as Map),
+      );
     } on DioException catch (error) {
       if (error.response?.statusCode == 401) await clearSession();
       return null;
@@ -51,7 +53,9 @@ class AuthRepository {
       data: {'id_token': idToken},
     );
     await _box.put('session_token', response.data!['token'].toString());
-    return AuthUser.fromJson(response.data!['user'] as Map<String, dynamic>);
+    return AuthUser.fromJson(
+      Map<String, dynamic>.from(response.data!['user'] as Map),
+    );
   }
 
   Future<void> logout() async {

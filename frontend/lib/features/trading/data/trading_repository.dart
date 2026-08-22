@@ -115,7 +115,7 @@ class TradingRepository {
     final index = orders.indexWhere((order) => order['id'] == orderId && order['status'] == 'OPEN');
     if (index < 0) throw StateError('Open trade not found.');
     final order = orders[index];
-    final quote = _findQuote(market, order['symbol'].toString()) ?? Quote.fromJson(order['quote'] as Map<String, dynamic>);
+    final quote = _findQuote(market, order['symbol'].toString()) ?? Quote.fromJson(Map<String, dynamic>.from(order['quote'] as Map));
     orders[index] = _closed(order, order['side'] == 'BUY' ? quote.bid : quote.ask, 'MANUAL');
     await _store.saveOrders(orders);
   }
@@ -209,7 +209,7 @@ class TradingRepository {
     for (var i = 0; i < pending.length; i++) {
       final item = pending[i];
       if (item['status'] != 'PENDING') continue;
-      final quote = _findQuote(market, item['symbol'].toString()) ?? Quote.fromJson(item['quote'] as Map<String, dynamic>);
+      final quote = _findQuote(market, item['symbol'].toString()) ?? Quote.fromJson(Map<String, dynamic>.from(item['quote'] as Map));
       final execution = item['side'] == 'BUY' ? quote.ask : quote.bid;
       final buy = item['side'] == 'BUY';
       final limit = item['order_type'] == 'LIMIT';
@@ -226,7 +226,7 @@ class TradingRepository {
     for (var i = 0; i < orders.length; i++) {
       final item = orders[i];
       if (item['status'] != 'OPEN') continue;
-      final quote = _findQuote(market, item['symbol'].toString()) ?? Quote.fromJson(item['quote'] as Map<String, dynamic>);
+      final quote = _findQuote(market, item['symbol'].toString()) ?? Quote.fromJson(Map<String, dynamic>.from(item['quote'] as Map));
       final mark = quote.ltp;
       final buy = item['side'] == 'BUY';
       final target = _nullable(item['target_price']);
